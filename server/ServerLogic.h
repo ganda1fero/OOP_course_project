@@ -51,6 +51,7 @@ class MsgHead {
 public:
 	MsgHead();
 	bool read_from_char(char* ptr);
+	int size();
 
 	unsigned char first_code;
 	unsigned char second_code;
@@ -65,6 +66,8 @@ bool SetupServer(SOCKET& door_sock, EasyLogs& logs);
 void ServerMain(SOCKET& door_sock, EasyLogs& logs, ServerData& server);
 void ServerThread(SOCKET connection, EasyLogs& logs, ServerData& server);
 
-void ServerMenu(ServerData& server);
+void ServerMenu(ServerData& server, EasyLogs& logs);
+bool StopServerMenu(EasyLogs& logs);
+void LogsMenu(EasyLogs& logs);
 
 #endif  

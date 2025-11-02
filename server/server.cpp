@@ -17,11 +17,7 @@
 //---------------------------------------------------------- main
 
 int main() {
-	std::cout << sizeof(MsgHead);
-
-	while (true)
-		Sleep(1000);
-
+	// инициализация
 	EasyLogs logs("serv");
 	if (logs.is_open() == false) {
 		logs.create("serv");
@@ -43,9 +39,9 @@ int main() {
 
 	ServerData server;
 	
-	std::thread door_thread(ServerMain, door_sock, logs, server);	// открыли поток
+	std::thread door_thread(ServerMain, std::ref(door_sock), std::ref(logs), std::ref(server));	// открыли поток
 	
-	ServerMenu(server);	// выполняем логику меню
+	ServerMenu(server, logs);	// выполняем логику меню
 
 	// закрытие всего
 	server.set_state(-1);// дали команду закрыть сервер
