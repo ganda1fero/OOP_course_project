@@ -28,6 +28,7 @@ public:
 	int get_count_of_connections();
 
 	void add_new_connection(const SOCKET& socket, time_t connect_time);
+	bool del_connection(const SOCKET& socket);
 
 private:
 	struct serv_connection {

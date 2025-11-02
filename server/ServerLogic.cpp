@@ -134,6 +134,10 @@ void ServerMain(SOCKET& door_sock, EasyLogs& logs, ServerData& server) {
 
 void ServerThread(SOCKET connection, EasyLogs& logs, ServerData& server) {	// тело самого клиент-сервера
 
+
+
+	// закрытие соединения (потока)
+	server.del_connection(connection);
 }
 
 void ServerMenu(ServerData& server, EasyLogs& logs) {
@@ -649,6 +653,20 @@ void ServerData::add_new_connection(const SOCKET& socket, time_t connect_time) {
 
 	std::lock_guard<std::mutex> lock(connected_vect_mutex);
 	connected_vect.push_back(tmp_ptr);
+}
+
+bool ServerData::del_connection(const SOCKET& socket) {
+	std::lock_guard<std::mutex> lock(connected_vect_mutex);
+	for (uint32_t i{ 0 }; i < connected_vect.size(); i++) {
+		if (connected_vect[i]->connection == socket) {
+			delete connected_vect[i];	// очистил динамическую память
+			connected_vect.erase(connected_vect.begin() + i);	// удалил указатель
+
+			return true;
+		}
+	}
+
+	return false;
 }
 
 //---------------------- MsgHead
