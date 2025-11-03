@@ -16,6 +16,8 @@
 void ServerMenu(ServerData& server, EasyLogs& logs);
 bool StopServerMenu(EasyLogs& logs);
 void LogsMenu(EasyLogs& logs);
+void AccountsMenu(EasyLogs& logs, ServerData& server);
+void AddAccountMenu(EasyLogs& logs, ServerData& server);
 
 
 #endif	

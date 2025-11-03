@@ -4,11 +4,17 @@
 #define SERVER_LOCAL_MODE true
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 
+#define BANNED_ROLE 0
+#define USER_ROLE 1
+#define TEACHER_ROLE 2
+#define ADMIN_ROLE 3
+
 #include <iostream>
 #include <chrono>
 #include <thread>
 #include <mutex>
 #include <string>
+#include <algorithm>
 
 #include <WinSock2.h>
 #include <ws2tcpip.h>  // дл€ getaddrinfo, freeaddrinfo
@@ -18,48 +24,81 @@
 
 //---------------------------------------------------------- объ€вление классов / структур
 
-class ServerData {
-public:
-	// методы
-	ServerData();
-	~ServerData();
+struct account_note {
+	uint32_t id{ 0 };
+	uint32_t role{ 0 };
+	std::string password{ "" };
 
-	int get_state();
-	void set_state(int new_state);
+	time_t last_action;
 
-	int get_count_of_connections();
+	std::string first_name{ "" };
+	std::string last_name{ "" };
+	std::string surname{ "" };
+	std::string faculty{ "" };
+};
 
-	void add_new_connection(const SOCKET& socket, time_t connect_time);
-	bool del_connection(const SOCKET& socket);
+struct serv_connection {	// информаци€ о соединении
+	SOCKET connection;
 
-private:
-	struct serv_connection {
-		SOCKET connection;
-		time_t last_action;
-
-	};
-
-	std::mutex state_mutex;
-	int state;	// состо€ние [0 - работает, 1 - открытие, -1 - закрытие]
-
-
-	std::mutex connected_vect_mutex;
-	std::vector<serv_connection*> connected_vect;
-	
-	// методы
-	
+	account_note* account_ptr{ nullptr };
+	time_t last_action{ std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()) };
 };
 
 class MsgHead {
 public:
 	MsgHead();
 	bool read_from_char(char* ptr);
-	int size();
+	int size_of();
 
-	unsigned char first_code;
-	unsigned char second_code;
-	uint32_t third_code;
-	uint32_t msg_length;
+	unsigned char first_code;	// 1b
+	unsigned char second_code;	// 1b
+	uint32_t third_code;		// 4b
+	uint32_t msg_length;		// 4b
+};
+
+class ServerData {
+public:
+	// методы
+	ServerData();	// конструтор по умолчанию
+	~ServerData();	// деструктор
+
+	// общее
+	int get_state();
+	void set_state(int new_state);
+
+	int get_count_of_connections();
+
+	void add_new_connection(const SOCKET& socket);
+	bool del_connection(const SOCKET& socket);
+
+	// ощие данные
+	bool ReadFromFile();
+	void SaveToFile();
+
+	// методы (аккаунты)
+	bool read_from_file_accounts();
+	void save_to_file_accounts();
+	void sort_accounts();
+	bool insert_new_account(uint32_t id, uint32_t role, std::string password, std::string first_name, std::string last_name, std::string surname, std::string faculty);
+	std::vector<account_note> get_all_account_notes();
+
+private:
+	// пол€
+	std::mutex state_mutex;
+	int state_of_server;	// состо€ние [0 - работает, 1 - открытие, -1 - закрытие]
+
+	std::mutex connected_vect_mutex;
+	std::vector<serv_connection*> connected_vect;	// вектор всех подключений
+	
+	std::mutex accounts_mutex;
+	std::vector<account_note*> accounts;
+	void __clear_accounts__();
+	bool __read_from_file_accounts__();
+	void __save_to_file_accounts__();
+	void __sort_accounts__();
+	
+	// методы
+
 };
 
 //---------------------------------------------------------- объ€вление функций
@@ -67,6 +106,6 @@ public:
 bool SetupServer(SOCKET& door_sock, EasyLogs& logs);
 
 void ServerMain(SOCKET& door_sock, EasyLogs& logs, ServerData& server);
-void ServerThread(SOCKET connection, EasyLogs& logs, ServerData& server);
+void ServerThread(const SOCKET connection, EasyLogs& logs, ServerData& server);
 
-#endif  
+#endif

@@ -6,13 +6,11 @@ void ServerMenu(ServerData& server, EasyLogs& logs) {
 	menu.set_info_main_color(GREEN_COLOR);
 	menu.set_color(2, BLUE_COLOR);
 
-	menu.set_notification(0, "(В разработке)");
-
 	while (true) {
 		switch (menu.easy_run())
 		{
 		case 0:	// упр. аккаунтами
-
+			AccountsMenu(logs, server);
 			break;
 		case 1:	// просмотр логов
 			LogsMenu(logs);
@@ -470,6 +468,154 @@ void LogsMenu(EasyLogs& logs) {
 
 			break;
 		case 11:// назад
+			return;
+			break;
+		}
+	}
+}
+
+void AccountsMenu(EasyLogs& logs, ServerData& server) {
+	EasyMenu menu("Поиск", "Добавить аккаунт", "Назад");
+	menu.set_info("Сервер запущен");
+	menu.set_info_main_color(GREEN_COLOR);
+
+	menu.set_notification(0, "(В разработке)");
+
+	while (true) {
+		switch (menu.easy_run()) {
+		case 0:	// поиск
+			
+			break;
+		case 1:	// добавить аккаунт
+			AddAccountMenu(logs, server);
+			break;
+		case 2:	// назад
+			return;
+			break;
+		}
+	}
+}
+
+void AddAccountMenu(EasyLogs& logs, ServerData& server) {
+	EasyMenu menu;
+
+	menu.set_info("Сервер запущен");
+	menu.set_info_main_color(GREEN_COLOR);
+
+	menu.push_back_advanced_cin("ID:");
+	menu.set_advanced_cin_new_allowed_chars(0, "1234567890");
+	menu.set_advanced_cin_max_input_length(0, 8);
+	menu.set_notification(0, "(8 символов!)");
+
+	menu.push_back_advanced_cin("Начальный пароль:");
+	menu.set_advanced_cin_new_allowed_chars(1, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM_1234567890");
+	menu.set_advanced_cin_ban_not_allowed_on(1);
+
+	menu.push_back_text("Роль пользователя");
+	menu.set_notification(2, "(выберите 1 из вариантов)");
+
+	menu.push_back_checkbox("Студент");
+
+	menu.push_back_checkbox("Преподаватель");
+
+	menu.push_back_checkbox("Админ");
+
+	menu.push_back_advanced_cin("Имя:");
+	menu.set_advanced_cin_new_allowed_chars(6, "йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ ");
+
+	menu.push_back_advanced_cin("Фамилия:");
+	menu.set_advanced_cin_new_allowed_chars(7, "йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ ");
+	
+	menu.push_back_advanced_cin("Отчество:");
+	menu.set_advanced_cin_new_allowed_chars(8, "йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ ");
+
+	menu.push_back_advanced_cin("Факультет:");
+	menu.set_advanced_cin_new_allowed_chars(9, "ЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ");
+	menu.set_advanced_cin_max_input_length(9, 5);
+
+	menu.push_back_butt("Создать аккаунт");
+	menu.set_notification_color(10, RED_COLOR);
+
+	menu.push_back_butt("Назад");
+
+	while (true) {
+		switch (menu.easy_run()) {
+		case 9:		// создать аккаунт
+			if (menu.is_all_advanced_cin_correct() == false) {
+				menu.set_notification(10, "(исправьте все ошибки ввода!)");
+				break;
+			}
+
+			if (menu.get_advanced_cin_input(0).length() != 8) {
+				menu.set_notification(10, "(Длина ввода должа быть = 8)");
+				break;
+			}
+
+			if (menu.get_advanced_cin_input(0)[0] == '0') {
+				menu.set_notification(10, "(ID не может начинаться с \'0\'!)");
+				break;
+			}
+
+			if (menu.get_advanced_cin_input(1).length() < 5) {
+				menu.set_notification(10, "(Мин длина пароля 5 символов!)");
+				break;
+			}
+
+			{
+				uint32_t counter{ 0 };
+				for (uint32_t i{ 0 }; i < menu.get_all_checkbox_status().size(); i++)
+					counter += menu.get_all_checkbox_status()[i];
+
+				if (counter == 0) {
+					menu.set_notification(10, "(Выберите роль!)");
+					break;
+				} else if (counter > 1) {
+					menu.set_notification(10, "(Выберите всего 1 роль!)");
+					break;
+				}
+			}
+
+			if (menu.get_advanced_cin_input(6).length() < 2) {
+				menu.set_notification(10, "(Длина имени от 2-х символов!)");
+				break;
+			}
+
+			if (menu.get_advanced_cin_input(7).length() < 2) {
+				menu.set_notification(10, "(Длина фамилии от 2-х символов!)");
+				break;
+			}
+
+			if (menu.get_advanced_cin_input(8).length() < 2) {
+				menu.set_notification(10, "(Длина отчества от 2-х символов!)");
+				break;
+			}
+
+			if (menu.get_advanced_cin_input(9).length() < 3) {
+				menu.set_notification(10, "(Длина факльтета от 3-х символов!)");
+				break;
+			}
+
+			// если дошли сюда => не было ошибок
+			menu.set_notification(10, "");
+
+			{
+				uint32_t type{ 0 };
+				for (uint32_t i{ 0 }; i < menu.get_all_checkbox_status().size(); i++)
+					if (menu.get_all_checkbox_status()[i] == true)
+						type = i + 1;
+
+				if (server.insert_new_account(std::stoi(menu.get_advanced_cin_input(0)), type, menu.get_advanced_cin_input(1), menu.get_advanced_cin_input(6), menu.get_advanced_cin_input(7), menu.get_advanced_cin_input(8), menu.get_advanced_cin_input(9))) {
+					logs.insert(EL_ACTION, EL_SECURITY, "Добавлен новый пользоатель ID:" + menu.get_advanced_cin_input(0) + " [SERVER]");
+					return;
+				}
+				else {
+					menu.set_notification(10, "ID занят!");
+					logs.insert(EL_ERROR, EL_ACTION, EL_SECURITY, "Неудачная попытка добавления нового пользователя, ID занят:" + menu.get_advanced_cin_input(0) + " [SERVER]");
+				}
+			}
+			
+			break;
+		case 10:	// назад
 			return;
 			break;
 		}

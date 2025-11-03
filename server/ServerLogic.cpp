@@ -80,6 +80,8 @@ bool SetupServer(SOCKET& door_sock, EasyLogs& logs) {
 		return false;	// выход
 	}	// поставили сокет режим слушания
 
+
+
 	return true;
 }
 
@@ -109,7 +111,7 @@ void ServerMain(SOCKET& door_sock, EasyLogs& logs, ServerData& server) {
 			u_long mode = 1;
 			ioctlsocket(connection, FIONBIO, &mode);	// сделали поток неблокирующим
 
-			server.add_new_connection(connection, std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()));
+			server.add_new_connection(connection);	// добавили соединение в базу
 
 			std::thread t(ServerThread, connection, std::ref(logs), std::ref(server));	// создали поток
 			t.detach();	// отсоединили поток
@@ -139,18 +141,57 @@ void ServerThread(SOCKET connection, EasyLogs& logs, ServerData& server) {	// те
 
 //---------------------------------------------------------- методы классов
 
+//---------------------- MsgHead
+MsgHead::MsgHead() {
+	first_code = UCHAR_MAX;
+	second_code = UCHAR_MAX;
+	third_code = UINT32_MAX;
+	msg_length = 0;
+}
+
+int MsgHead::size_of() {
+	return 10;
+}
+
+bool MsgHead::read_from_char(char* ptr) {
+	uint32_t ptr_index = 0;
+	try {
+		first_code = *reinterpret_cast<unsigned char*>(ptr + ptr_index);
+		ptr_index += sizeof(first_code);
+
+		second_code = *reinterpret_cast<unsigned char*>(ptr + ptr_index);
+		ptr_index += sizeof(second_code);
+
+		third_code = *reinterpret_cast<uint32_t*>(ptr + ptr_index);
+		ptr_index += sizeof(third_code);
+
+		msg_length = *reinterpret_cast<uint32_t*>(ptr + ptr_index);
+	}
+	catch (...) {	// какая-то UB
+		first_code = UCHAR_MAX;
+		second_code = UCHAR_MAX;
+		third_code = UINT32_MAX;
+		msg_length = 0;
+
+		return false;	// перевод неудачный
+	}
+
+	return true;	// удачный перевод
+}
+
 //---------------------- ServerData
 ServerData::ServerData() {
-	state = 1;	// запуск
+	state_of_server = 1;	// запуск
 }
 
 ServerData::~ServerData() {
+	__clear_accounts__();
 
 }
 
 int ServerData::get_state() {
 	std::lock_guard<std::mutex> lock(state_mutex);	// залочили 
-	int tmp = state;
+	int tmp = state_of_server;
 	return tmp;
 }
 
@@ -159,7 +200,7 @@ void ServerData::set_state(int new_state) {
 		new_state = -1;
 
 	std::lock_guard<std::mutex> lock(state_mutex);
-	state = new_state;
+	state_of_server = new_state;
 }
 
 int ServerData::get_count_of_connections() {
@@ -168,10 +209,9 @@ int ServerData::get_count_of_connections() {
 	return tmp;
 }
 
-void ServerData::add_new_connection(const SOCKET& socket, time_t connect_time) {
+void ServerData::add_new_connection(const SOCKET& socket) {
 	serv_connection* tmp_ptr = new serv_connection;
 	tmp_ptr->connection = socket;
-	tmp_ptr->last_action = connect_time;
 
 	std::lock_guard<std::mutex> lock(connected_vect_mutex);
 	connected_vect.push_back(tmp_ptr);
@@ -191,41 +231,244 @@ bool ServerData::del_connection(const SOCKET& socket) {
 	return false;
 }
 
-//---------------------- MsgHead
+bool ServerData::ReadFromFile() {
+	bool tmp_bool = true;
 
-MsgHead::MsgHead() {
-	first_code = 0;
-	second_code = 0;
-	third_code = 0;
-	msg_length = 0;
+	if (__read_from_file_accounts__() == false)
+		tmp_bool = false;
+
+	return tmp_bool;
 }
 
-int MsgHead::size() {
-	return 10;
+void ServerData::SaveToFile() {
+	__save_to_file_accounts__();
+
 }
 
-bool MsgHead::read_from_char(char* ptr) {
-	uint32_t ptr_index = 0;
+bool ServerData::read_from_file_accounts() {
+	return __read_from_file_accounts__();
+}
+
+void ServerData::save_to_file_accounts() {
+	return __save_to_file_accounts__();
+}
+
+void ServerData::sort_accounts() {
+	return __sort_accounts__();
+}
+
+bool ServerData::insert_new_account(uint32_t id, uint32_t role, std::string password, std::string first_name, std::string last_name, std::string surname, std::string faculty) {
+	account_note* tmp_ptr = new account_note;
+	tmp_ptr->id = id;
+	tmp_ptr->role = role;
+	tmp_ptr->password = password;
+	tmp_ptr->first_name = first_name;
+	tmp_ptr->last_name = last_name;
+	tmp_ptr->surname = surname;
+	tmp_ptr->faculty = faculty;
+	tmp_ptr->last_action = 0;
+	
+	std::lock_guard<std::mutex> lock(accounts_mutex);
+
+	auto it = std::lower_bound(accounts.begin(), accounts.end(), id,
+		[](const account_note* first, const uint32_t& nedded_id) {
+			return first->id < nedded_id;
+		});
+
+	if (it == accounts.end() || (*it)->id != id) {	// если такого id нет (мы можем быть в конце или на месте большего (для сохранения сортировки))
+		// добавлем на место it
+		accounts.insert(it, tmp_ptr);
+
+		return true;
+	}
+	else {
+		delete tmp_ptr;
+
+		return false;
+	}
+}
+
+std::vector<account_note> ServerData::get_all_account_notes() {
+	std::vector<account_note> tmp_vect;
+	std::vector<account_note*> tmp_ptr;
+
+	{
+		std::lock_guard<std::mutex> lock(accounts_mutex);
+		
+		tmp_ptr = accounts;
+	}
+
+	tmp_vect.resize(tmp_ptr.size());
+
+	for (uint32_t i{ 0 }; i < tmp_ptr.size(); i++) {
+		tmp_vect[i].id = tmp_ptr[i]->id;
+		tmp_vect[i].role = tmp_ptr[i]->role;
+		tmp_vect[i].password = tmp_ptr[i]->password;
+		tmp_vect[i].last_action = tmp_ptr[i]->last_action;
+		tmp_vect[i].first_name = tmp_ptr[i]->first_name;
+		tmp_vect[i].last_name = tmp_ptr[i]->last_name;
+		tmp_vect[i].surname = tmp_ptr[i]->surname;
+		tmp_vect[i].faculty = tmp_ptr[i]->faculty;
+	}
+
+	return tmp_vect;
+}
+
+void ServerData::__clear_accounts__() {
+	std::lock_guard<std::mutex> lock(accounts_mutex);
+
+	for (uint32_t i{ 0 }; i < accounts.size(); i++)
+		if (accounts[i] != nullptr)
+			delete accounts[i];
+
+	accounts.clear();
+}
+
+bool ServerData::__read_from_file_accounts__() {
+	std::ifstream file("accounts.save", std::ios::binary | std::ios::in);
+
+	if (file.is_open() == false)
+		return false;
+
+	// временные переменные
+	std::vector<account_note*> tmp_accounts;
+
+	uint32_t uint32_t_buffer{ 0 };
+	time_t time_t_buffer{ 0 };
+
 	try {
-		first_code = *reinterpret_cast<unsigned char*>(ptr + ptr_index);
-		ptr_index += sizeof(first_code);
+		file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+		tmp_accounts.resize(uint32_t_buffer);
 
-		second_code = *reinterpret_cast<unsigned char*>(ptr + ptr_index);
-		ptr_index += sizeof(second_code);
+		for (uint32_t i{ 0 }; i < tmp_accounts.size(); i++) {
+			tmp_accounts[i] = new account_note;
 
-		third_code = *reinterpret_cast<uint32_t*>(ptr + ptr_index);
-		ptr_index += sizeof(third_code);
+			file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+			tmp_accounts[i]->id = uint32_t_buffer;
 
-		msg_length = *reinterpret_cast<uint32_t*>(ptr + ptr_index);
+			file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+			tmp_accounts[i]->role = uint32_t_buffer;
+
+			file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+			tmp_accounts[i]->password.resize(uint32_t_buffer);
+
+			file.read(&tmp_accounts[i]->password[0], tmp_accounts[i]->password.size());
+
+			file.read(reinterpret_cast<char*>(&time_t_buffer), sizeof(time_t));
+			tmp_accounts[i]->last_action = time_t_buffer;
+
+			file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+			tmp_accounts[i]->first_name.resize(uint32_t_buffer);
+
+			file.read(&tmp_accounts[i]->first_name[0], tmp_accounts[i]->first_name.size());
+
+			file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+			tmp_accounts[i]->last_name.resize(uint32_t_buffer);
+
+			file.read(&tmp_accounts[i]->last_name[0], tmp_accounts[i]->last_name.size());
+
+			file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+			tmp_accounts[i]->surname.resize(uint32_t_buffer);
+
+			file.read(&tmp_accounts[i]->surname[0], tmp_accounts[i]->surname.size());
+
+			file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+			tmp_accounts[i]->faculty.resize(uint32_t_buffer);
+
+			file.read(&tmp_accounts[i]->faculty[0], tmp_accounts[i]->faculty.size());
+		}
 	}
 	catch (...) {
-		first_code = 0;
-		second_code = 0;
-		third_code = 0;
-		msg_length = 0;
-		
+		// словили ошибку
+		for (uint32_t i{ 0 }; i < tmp_accounts.size(); i++)
+			if (tmp_accounts[i] != nullptr)
+				delete tmp_accounts[i];
+
+		tmp_accounts.clear();
+
+		file.close();
+
 		return false;
 	}
 
+	// дошли сюда => все хорошо
+	file.close();
+
+	__clear_accounts__();
+
+	{
+		std::lock_guard<std::mutex> lock(accounts_mutex);
+		accounts = tmp_accounts;
+	}
+
 	return true;
+}
+
+void ServerData::__save_to_file_accounts__() {
+	std::ofstream file("accounts.save", std::ios::binary | std::ios::trunc);
+
+	if (file.is_open() == false)
+		return;
+
+	// временная переменные
+	std::vector<account_note*> tmp_accounts;
+
+	uint32_t uint32_t_buffer;
+	time_t time_t_buffer;
+
+	{	// пренос для записи данных
+		std::lock_guard<std::mutex> lock(accounts_mutex);
+		tmp_accounts = accounts;
+	}
+
+	// запись в файл
+	uint32_t_buffer = tmp_accounts.size();
+	file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+
+	for (uint32_t i{ 0 }; i < tmp_accounts.size(); i++) {
+		uint32_t_buffer = tmp_accounts[i]->id;
+		file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+
+		uint32_t_buffer = tmp_accounts[i]->role;
+		file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+
+		uint32_t_buffer = tmp_accounts[i]->password.length();
+		file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+
+		file.write(&tmp_accounts[i]->password[0], tmp_accounts[i]->password.length());
+
+		time_t_buffer = tmp_accounts[i]->last_action;
+		file.write(reinterpret_cast<char*>(&time_t_buffer), sizeof(time_t));
+
+		uint32_t_buffer = tmp_accounts[i]->first_name.length();
+		file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+
+		file.write(&tmp_accounts[i]->first_name[0], tmp_accounts[i]->first_name.length());
+
+		uint32_t_buffer = tmp_accounts[i]->last_name.length();
+		file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+
+		file.write(&tmp_accounts[i]->last_name[0], tmp_accounts[i]->last_name.length());
+
+		uint32_t_buffer = tmp_accounts[i]->surname.length();
+		file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+
+		file.write(&tmp_accounts[i]->surname[0], tmp_accounts[i]->surname.length());
+
+		uint32_t_buffer = tmp_accounts[i]->faculty.length();
+		file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+
+		file.write(&tmp_accounts[i]->faculty[0], tmp_accounts[i]->faculty.length());
+	}
+
+	file.close();
+}
+
+void ServerData::__sort_accounts__() {
+	std::lock_guard<std::mutex> lock(accounts_mutex);
+
+	std::sort(accounts.begin(), accounts.end(),
+		[](const account_note* first, const account_note* second) {
+			return first->id < second->id;
+		});
 }

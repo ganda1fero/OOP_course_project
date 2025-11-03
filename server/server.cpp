@@ -33,6 +33,9 @@ int main() {
 	logs.insert(EL_SYSTEM, EL_NETWORK, "Сервер успешно запущен");
 
 	ServerData server;
+	server.ReadFromFile();
+
+	logs.insert(EL_SYSTEM, "Найдено аккаунтов: " + std::to_string(server.get_all_account_notes().size()));
 	
 	std::thread door_thread(ServerMain, std::ref(door_sock), std::ref(logs), std::ref(server));	// открыли поток
 	
@@ -42,6 +45,8 @@ int main() {
 	server.set_state(-1);// дали команду закрыть сервер
 
 	door_thread.join();	// ждем завершения потока двери
+
+	server.SaveToFile();
 
 	WSACleanup();
 	logs.insert(EL_SYSTEM, EL_NETWORK, "Сервер закрыт");
