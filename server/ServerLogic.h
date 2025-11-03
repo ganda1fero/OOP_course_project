@@ -1,17 +1,19 @@
 #ifndef SERVERLOGIC_H
 #define SERVERLOGIC_H
 
+#define SERVER_LOCAL_MODE true
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+
 #include <iostream>
 #include <chrono>
+#include <thread>
+#include <mutex>
+#include <string>
 
 #include <WinSock2.h>
 #include <ws2tcpip.h>  // дл€ getaddrinfo, freeaddrinfo
 #pragma comment(lib, "ws2_32.lib") // доподключаем реализацию библиотеку WSA
 
-#include <thread>
-#include <mutex>
-
-#include "EasyMenu.h"
 #include "EasyLogs.h"
 
 //---------------------------------------------------------- объ€вление классов / структур
@@ -66,9 +68,5 @@ bool SetupServer(SOCKET& door_sock, EasyLogs& logs);
 
 void ServerMain(SOCKET& door_sock, EasyLogs& logs, ServerData& server);
 void ServerThread(SOCKET connection, EasyLogs& logs, ServerData& server);
-
-void ServerMenu(ServerData& server, EasyLogs& logs);
-bool StopServerMenu(EasyLogs& logs);
-void LogsMenu(EasyLogs& logs);
 
 #endif  

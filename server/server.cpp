@@ -1,18 +1,13 @@
-﻿#define _WINSOCK_DEPRECATED_NO_WARNINGS
-
-#include <iostream>
+﻿#include <iostream>
 
 #include <WinSock2.h>
-#include <ws2tcpip.h>  // для getaddrinfo, freeaddrinfo
-#pragma comment(lib, "ws2_32.lib") // доподключаем реализацию библиотеку WSA
+#include <ws2tcpip.h>
+#include <Windows.h>
 
-#include <thread>
-#include <mutex>
-
+#include "ServerLogic.h"
 #include "EasyMenu.h"
 #include "EasyLogs.h"
-#include "ServerLogic.h"
-
+#include "ServerMenues.h"
 
 //---------------------------------------------------------- main
 
@@ -29,7 +24,7 @@ int main() {
 	if (SetupServer(door_sock, logs) == false) {
 		logs.insert(EL_SYSTEM, EL_ERROR, "Неудачный запус сервера, сервер закрыт");
 		logs.save();
-		std::cout << "Неудачный запус сервера, сервер закрыт";
+		std::cout << "Неудачный запуск сервера, сервер закрыт";
 
 		return 0;
 	}
