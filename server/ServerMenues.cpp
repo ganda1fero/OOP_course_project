@@ -475,7 +475,7 @@ void LogsMenu(EasyLogs& logs) {
 }
 
 void AccountsMenu(EasyLogs& logs, ServerData& server) {
-	EasyMenu menu("Поиск", "Добавить аккаунт", "Назад");
+	EasyMenu menu("Поиск по ID", "Добавить аккаунт", "Назад");
 	menu.set_info("Сервер запущен");
 	menu.set_info_main_color(GREEN_COLOR);
 
