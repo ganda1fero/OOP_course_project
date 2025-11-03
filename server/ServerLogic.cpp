@@ -111,9 +111,9 @@ void ServerMain(SOCKET& door_sock, EasyLogs& logs, ServerData& server) {
 			u_long mode = 1;
 			ioctlsocket(connection, FIONBIO, &mode);	// сделали поток неблокирующим
 
-			server.add_new_connection(connection);	// добавили соединение в базу
+			serv_connection* connection_ptr = server.add_new_connection(connection);	// добавили соединение в базу
 
-			std::thread t(ServerThread, connection, std::ref(logs), std::ref(server));	// создали поток
+			std::thread t(ServerThread, connection_ptr, std::ref(logs), std::ref(server));	// создали поток
 			t.detach();	// отсоединили поток
 		}
 	}
@@ -131,12 +131,16 @@ void ServerMain(SOCKET& door_sock, EasyLogs& logs, ServerData& server) {
 	return;
 }
 
-void ServerThread(SOCKET connection, EasyLogs& logs, ServerData& server) {	// тело самого клиент-сервера
+void ServerThread(serv_connection* connection_ptr, EasyLogs& logs, ServerData& server) {	// тело самого клиент-сервера
+	char packet_buffer[1024];
+	std::vector<char> main_buffer;
 
+	while (true) {	// главное тело
 
+	}
 
 	// закрытие соединения (потока)
-	server.del_connection(connection);
+	server.del_connection(connection_ptr->connection);
 }
 
 //---------------------------------------------------------- методы классов
@@ -209,12 +213,14 @@ int ServerData::get_count_of_connections() {
 	return tmp;
 }
 
-void ServerData::add_new_connection(const SOCKET& socket) {
+serv_connection* ServerData::add_new_connection(const SOCKET& socket) {
 	serv_connection* tmp_ptr = new serv_connection;
 	tmp_ptr->connection = socket;
 
 	std::lock_guard<std::mutex> lock(connected_vect_mutex);
 	connected_vect.push_back(tmp_ptr);
+
+	return tmp_ptr;
 }
 
 bool ServerData::del_connection(const SOCKET& socket) {

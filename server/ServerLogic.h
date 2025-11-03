@@ -68,7 +68,7 @@ public:
 
 	int get_count_of_connections();
 
-	void add_new_connection(const SOCKET& socket);
+	serv_connection* add_new_connection(const SOCKET& socket);
 	bool del_connection(const SOCKET& socket);
 
 	// ощие данные
@@ -106,6 +106,7 @@ private:
 bool SetupServer(SOCKET& door_sock, EasyLogs& logs);
 
 void ServerMain(SOCKET& door_sock, EasyLogs& logs, ServerData& server);
-void ServerThread(const SOCKET connection, EasyLogs& logs, ServerData& server);
+void ServerThread(serv_connection* connect_ptr, EasyLogs& logs, ServerData& server);
+
 
 #endif
