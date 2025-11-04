@@ -18,6 +18,8 @@ bool StopServerMenu(EasyLogs& logs);
 void LogsMenu(EasyLogs& logs);
 void AccountsMenu(EasyLogs& logs, ServerData& server);
 void AddAccountMenu(EasyLogs& logs, ServerData& server);
+void FindAccountMenu(EasyLogs& logs, ServerData& server);
+void ShowAccountMenu(EasyLogs& logs, ServerData& server, account_note finded_account);
 
 
 #endif	

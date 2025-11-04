@@ -479,12 +479,10 @@ void AccountsMenu(EasyLogs& logs, ServerData& server) {
 	menu.set_info("Сервер запущен");
 	menu.set_info_main_color(GREEN_COLOR);
 
-	menu.set_notification(0, "(В разработке)");
-
 	while (true) {
 		switch (menu.easy_run()) {
 		case 0:	// поиск
-			
+			FindAccountMenu(logs, server);
 			break;
 		case 1:	// добавить аккаунт
 			AddAccountMenu(logs, server);
@@ -617,6 +615,216 @@ void AddAccountMenu(EasyLogs& logs, ServerData& server) {
 			break;
 		case 10:	// назад
 			return;
+			break;
+		}
+	}
+}
+
+void FindAccountMenu(EasyLogs& logs, ServerData& server) {
+	std::vector<account_note> tmp_all_accounts = server.get_all_account_notes();
+
+	EasyDict tmp_dict;
+	tmp_dict.create("tmp_dict");
+	for (uint32_t i{ 0 }; i < tmp_all_accounts.size(); i++)
+		tmp_dict.enter_words(std::to_string(tmp_all_accounts[i].id));
+	tmp_dict.compile();
+
+	EasyMenu menu;
+	menu.set_info("Сервер запущен");
+	menu.set_info_main_color(GREEN_COLOR);
+
+	menu.push_back_advanced_cin("Введите ID:");
+	menu.set_advanced_cin_new_dictionary_ptr(0, &tmp_dict);
+	menu.set_advanced_cin_new_allowed_chars(0, "1234567890");
+	menu.set_advanced_cin_max_input_length(0, 8);
+
+	menu.push_back_butt("Найти");
+	menu.set_notification_color(1, RED_COLOR);
+	
+	menu.push_back_butt("Назад");
+
+	while (true) {
+		switch (menu.easy_run())
+		{
+		case 1:	// поиск
+			if (menu.is_all_advanced_cin_correct() == false) {
+				menu.set_notification(1, "(Исправьте ошибки ввода!)");
+				break;
+			}
+
+			if (menu.get_advanced_cin_input(0).length() != 8) {
+				menu.set_notification(1, "(ID должен состоять из 8-ми цифр!)");
+				break;
+			}
+
+			if (menu.get_advanced_cin_input(0)[0] == '0') {
+				menu.set_notification(1, "(ID не может начинаться с \'0\'!)");
+				break;
+			}
+			
+			{
+				uint32_t tmp_nedden_id = std::stoi(menu.get_advanced_cin_input(0));
+
+				auto it = std::lower_bound(tmp_all_accounts.begin(), tmp_all_accounts.end(), tmp_nedden_id,
+					[](const account_note& first, const uint32_t& nedded_id) {
+						return first.id < nedded_id;
+					});
+
+				if (it == tmp_all_accounts.end() || (*it).id != tmp_nedden_id) {
+					menu.set_notification(1, "Не найдено!");
+					break;
+				}
+				else {
+					menu.set_notification(1, "");
+					ShowAccountMenu(logs, server, *it);
+					break;
+				}
+			}
+
+			break;
+		case 2:	// назад
+			return;
+			break;
+		}
+	}
+}
+
+void ShowAccountMenu(EasyLogs& logs, ServerData& server, account_note finded_account) {
+	EasyMenu menu;
+	menu.set_info("Сервер запущен");
+	menu.set_info_main_color(GREEN_COLOR);
+
+	menu.push_back_text("ID: " + std::to_string(finded_account.id));
+	menu.push_back_text("ФИО: " + finded_account.last_name + ' ' + finded_account.first_name[0] + '.' + finded_account.surname[0]);
+	menu.push_back_text("Факультет: " + finded_account.faculty);
+	if (finded_account.last_action == 0)
+		menu.push_back_text("Последний раз в сети: никогда");
+	else {
+		time_t now_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+
+		time_t duration = now_t - finded_account.last_action;
+
+		if (duration < 60) {
+			// считаем в секундах
+			menu.push_back_text("Последний раз в сети: " + std::to_string(duration) + " сек. назад");
+		}
+		else if (duration < 3600) {
+			// считаем в минутах
+			menu.push_back_text("Последний раз в сети: " + std::to_string(duration / 60) + " мин. назад");
+		}
+		else if (duration < 216000) {
+			// считаем в часах
+			menu.push_back_text("Последний раз в сети: " + std::to_string(duration / 3600) + " часов назад");
+		}
+		else {
+			// считаем в днях
+			menu.push_back_text("Последний раз в сети: " + std::to_string(duration / 216000) + " дней назад");
+		}
+	}
+	
+	menu.push_back_butt("Назад");
+
+	menu.push_back_text("--------------Изменение----------------");
+	menu.set_color(5, YELLOW_COLOR);
+
+	if (finded_account.role == 1)
+		menu.push_back_checkbox("STUDENT", 1);
+	else
+		menu.push_back_checkbox("STUDENT");
+
+	if (finded_account.role == 2)
+		menu.push_back_checkbox("TEACHER", 1);
+	else 
+		menu.push_back_checkbox("TEACHER");
+
+	if (finded_account.role == 3)
+		menu.push_back_checkbox("ADMIN", 1);
+	else 
+		menu.push_back_checkbox("ADMIN");
+
+	menu.push_back_advanced_cin("Имя:", finded_account.first_name);
+	menu.set_advanced_cin_new_allowed_chars(9, "йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ ");
+	
+	menu.push_back_advanced_cin("Фамилия", finded_account.last_name);
+	menu.set_advanced_cin_new_allowed_chars(10, "йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ ");
+
+	menu.push_back_advanced_cin("Отчество:", finded_account.surname);
+	menu.set_advanced_cin_new_allowed_chars(11, "йцукенгшщзхъфывапролджэячсмитьбюЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ ");
+
+	menu.push_back_advanced_cin("Факультет:", finded_account.faculty);
+	menu.set_advanced_cin_new_allowed_chars(12, "ЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮ");
+	menu.set_advanced_cin_max_input_length(12, 5);
+
+	menu.push_back_butt("Сохранить");
+	menu.set_notification_color(13, RED_COLOR);
+
+	while (true) {
+		switch (menu.easy_run())
+		{
+		case 0:	// назад
+			return;
+			break;
+		case 8:	// сохранить 
+			if (menu.is_all_advanced_cin_correct() == false) {
+				menu.set_notification(13, "(Исправьте все ошибки ввода!)");
+				break;
+			}
+
+			if (menu.get_advanced_cin_input(9).length() < 2) {
+				menu.set_notification(13, "(Минимальная длина имени - 2 символа!)");
+				break;
+			}
+
+			if (menu.get_advanced_cin_input(10).length() < 2) {
+				menu.set_notification(13, "(Минимальная длина фамилии - 2 символа!)");
+				break;
+			}
+
+			if (menu.get_advanced_cin_input(11).length() < 2) {
+				menu.set_notification(13, "(Минимальная длина отчетсва - 2 символа!)");
+				break;
+			}
+
+			if (menu.get_advanced_cin_input(12).length() < 3) {
+				menu.set_notification(13, "(Минимальная длина факультета - 3 символа!)");
+				break;
+			}
+
+			{
+				int counter{ 0 };
+				for (uint32_t i{ 0 }; i < menu.get_all_checkbox_status().size(); i++)
+					counter += menu.get_all_checkbox_status()[i];
+
+				if (counter == 0) {
+					menu.set_notification(13, "(Выберите роль!)");
+					break;
+				}
+				else if (counter > 1) {
+					menu.set_notification(13, "(Выберите только 1 роль!)");
+					break;
+				}
+			}
+
+			// если дошли сюда => все верно!
+
+			{
+				uint32_t role{ 0 };
+				for (uint32_t i {0}; i < menu.get_all_checkbox_status().size(); i++)
+					if (menu.get_all_checkbox_status()[i] == true) {
+						role = i + 1;
+						break;
+					}
+
+				if (server.change_account_data(finded_account.id, role, menu.get_advanced_cin_input(9), menu.get_advanced_cin_input(10), menu.get_advanced_cin_input(11), menu.get_advanced_cin_input(12))) {
+					logs.insert(EL_ACTION, EL_SECURITY, "Успешное изменение данных аккаунта, ID: " + std::to_string(finded_account.id) + " [SERVER]");
+				}
+				else {
+					logs.insert(EL_ERROR, EL_SECURITY, EL_ACTION, "Неудачна попытка зименения данных аккаунта, ID: " + std::to_string(finded_account.id) + " [SERVER]");
+				}
+
+				return;
+			}
+
 			break;
 		}
 	}

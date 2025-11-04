@@ -294,6 +294,34 @@ bool ServerData::insert_new_account(uint32_t id, uint32_t role, std::string pass
 	}
 }
 
+bool ServerData::change_account_data(const uint32_t& nedded_id, uint32_t role, std::string first_name, std::string last_name, std::string surname, std::string faculty) {
+	std::vector<account_note*> tmp_accounts;
+	{
+		std::lock_guard<std::mutex> lock(accounts_mutex);
+		tmp_accounts = accounts;
+	}
+
+	auto it = std::lower_bound(tmp_accounts.begin(), tmp_accounts.end(), nedded_id,
+		[](const account_note* first, const uint32_t& nedded) {
+			return first->id < nedded;
+		});
+
+	if (it == tmp_accounts.end() || (*it)->id != nedded_id)
+		return false;
+
+	{
+		std::lock_guard<std::mutex> lock(accounts_mutex);
+		
+		(*it)->role = role;
+		(*it)->first_name = first_name;
+		(*it)->last_name = last_name;
+		(*it)->surname = surname;
+		(*it)->faculty = faculty;
+	}
+
+	return true;
+}
+
 std::vector<account_note> ServerData::get_all_account_notes() {
 	std::vector<account_note> tmp_vect;
 	std::vector<account_note*> tmp_ptr;

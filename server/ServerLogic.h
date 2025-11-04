@@ -80,6 +80,7 @@ public:
 	void save_to_file_accounts();
 	void sort_accounts();
 	bool insert_new_account(uint32_t id, uint32_t role, std::string password, std::string first_name, std::string last_name, std::string surname, std::string faculty);
+	bool change_account_data(const uint32_t& nedded_id, uint32_t role, std::string first_name, std::string last_name, std::string surname, std::string faculty);
 	std::vector<account_note> get_all_account_notes();
 
 private:
