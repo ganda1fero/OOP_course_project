@@ -1,4 +1,6 @@
 ﻿#include <iostream>
+#include <string>
+#include <chrono>
 
 #include <WinSock2.h>
 #include <ws2tcpip.h>
@@ -22,12 +24,14 @@ int main() {
 	SOCKET door_sock;
 
 	if (SetupServer(door_sock, logs) == false) {
-		logs.insert(EL_SYSTEM, EL_ERROR, "Неудачный запус сервера, сервер закрыт");
+		logs.insert(EL_SYSTEM, EL_ERROR, "Неудачный запуск сервера, сервер закрыт");
 		logs.save();
 		std::cout << "Неудачный запуск сервера, сервер закрыт";
 
 		return 0;
 	}
+
+	time_t start_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
 
 	// (сокет сервера запущен и поставлен в прослушку)
 	logs.insert(EL_SYSTEM, EL_NETWORK, "Сервер успешно запущен");
@@ -49,7 +53,11 @@ int main() {
 	server.SaveToFile();
 
 	WSACleanup();
-	logs.insert(EL_SYSTEM, EL_NETWORK, "Сервер закрыт");
+
+	time_t duration_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()) - start_time_t;
+	std::string duration_str{ std::to_string(duration_t / 3600) + "ч " + std::to_string((duration_t / 60) % 60) + "мин" };
+
+	logs.insert(EL_SYSTEM, EL_NETWORK, "Сервер закрыт, время работы: " + duration_str);
 	std::cout << "сервер закрыт";
 	logs.save();
 }

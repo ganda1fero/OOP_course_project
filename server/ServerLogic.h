@@ -39,6 +39,7 @@ struct account_note {
 
 struct serv_connection {	// информация о соединении
 	SOCKET connection;
+	sockaddr_in connection_addr;
 
 	account_note* account_ptr{ nullptr };
 	time_t last_action{ std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()) };
@@ -47,7 +48,7 @@ struct serv_connection {	// информация о соединении
 class MsgHead {
 public:
 	MsgHead();
-	bool read_from_char(char* ptr);
+	bool read_from_char(const char* ptr);
 	int size_of();
 
 	unsigned char first_code;	// 1b
@@ -68,7 +69,7 @@ public:
 
 	int get_count_of_connections();
 
-	serv_connection* add_new_connection(const SOCKET& socket);
+	serv_connection* add_new_connection(const SOCKET& socket, const sockaddr_in& socket_addr);
 	bool del_connection(const SOCKET& socket);
 
 	// ощие данные
@@ -108,6 +109,15 @@ bool SetupServer(SOCKET& door_sock, EasyLogs& logs);
 
 void ServerMain(SOCKET& door_sock, EasyLogs& logs, ServerData& server);
 void ServerThread(serv_connection* connect_ptr, EasyLogs& logs, ServerData& server);
+bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+
+// Отправка
+bool SendTo(serv_connection* connect_ptr, const std::vector<char>& data, EasyLogs& logs);
+
+//------------------(Функции составления message)
+void CreateAccessDeniedMessage(std::vector<char>& vect, std::string text);
+
+//------------------(Функции чтения message)
 
 
 #endif

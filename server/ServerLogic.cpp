@@ -111,7 +111,7 @@ void ServerMain(SOCKET& door_sock, EasyLogs& logs, ServerData& server) {
 			u_long mode = 1;
 			ioctlsocket(connection, FIONBIO, &mode);	// сделали поток неблокирующим
 
-			serv_connection* connection_ptr = server.add_new_connection(connection);	// добавили соединение в базу
+			serv_connection* connection_ptr = server.add_new_connection(connection, connection_addr);	// добавили соединение в базу
 
 			std::thread t(ServerThread, connection_ptr, std::ref(logs), std::ref(server));	// создали поток
 			t.detach();	// отсоединили поток
@@ -133,14 +133,159 @@ void ServerMain(SOCKET& door_sock, EasyLogs& logs, ServerData& server) {
 
 void ServerThread(serv_connection* connection_ptr, EasyLogs& logs, ServerData& server) {	// тело самого клиент-сервера
 	char packet_buffer[1024];
-	std::vector<char> main_buffer;
+	std::vector<char> recv_buffer;
+
+	int32_t packet_size{ 0 };
+
+	MsgHead msg_header;
+
+	bool is_last_optimizated{ false };
 
 	while (true) {	// главное тело
+		is_last_optimizated = false;
 
+		// пытаемс€ прочитать
+		packet_size = recv(connection_ptr->connection, packet_buffer, 1024, 0);	// читаем
+
+		if (packet_size > 0) {	
+			// читаем какие-то данные
+
+			recv_buffer.insert(recv_buffer.end(), packet_buffer, packet_buffer + packet_size);	// вставили байты в общий буфер
+
+			connection_ptr->last_action = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());	// обновили врем€ последнего онлайна
+
+			// пробуем прочесть все возможные сообщени€
+			while (true) {
+				if (recv_buffer.size() < msg_header.size_of())
+					break;	// байтов не хватает даже на заголовок
+
+				if (msg_header.read_from_char(&recv_buffer[0]) == false) {	// ошибка header
+					std::string ip_str = inet_ntoa(connection_ptr->connection_addr.sin_addr);
+					std::string tmp_str{ "ќшибка заголовка сообщени€ от" + ip_str};
+					if (connection_ptr->account_ptr != nullptr)
+						tmp_str += '(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')';
+					tmp_str += ". «акрываю соединение";
+					logs.insert(EL_ERROR, EL_NETWORK, tmp_str);
+
+					closesocket(connection_ptr->connection);
+					server.del_connection(connection_ptr->connection);
+					return;
+				}
+
+				if (recv_buffer.size() < msg_header.size_of() + msg_header.msg_length)
+					break;	// байт недостаточно дл€ сообщени€
+					
+				if (ProcessMessage(msg_header, recv_buffer, connection_ptr, server, logs) == false) { // необходимо закрыть соединение
+					// ошибку логирует Process
+					closesocket(connection_ptr->connection);
+					server.del_connection(connection_ptr->connection);
+					return;
+				}
+
+				// очищаем использованные данные
+				recv_buffer.erase(recv_buffer.begin(), recv_buffer.begin() + msg_header.size_of() + msg_header.msg_length);
+			}
+		}
+		else if (packet_size == 0) {
+			// клиент закрыл соединение
+			std::string ip_str = inet_ntoa(connection_ptr->connection_addr.sin_addr);
+			std::string tmp_str{ "ѕользователь " + ip_str };
+			if (connection_ptr->account_ptr != nullptr)
+				tmp_str += '(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')';
+			tmp_str += " закрыл соединение";
+			logs.insert(EL_NETWORK, tmp_str);
+
+			break;
+		}
+		else if (WSAGetLastError() == WSAEWOULDBLOCK) {	// скорее всего -1, но просто ничего не пришло
+			is_last_optimizated = true;
+			Sleep(20);
+		}
+		else { // ошибка
+			std::string ip_str = inet_ntoa(connection_ptr->connection_addr.sin_addr);
+			std::string	tmp_str{ "ќшибка приема данных от пользовател€ " + ip_str + " закрываю соединение"};
+			if (connection_ptr->account_ptr != nullptr)
+				tmp_str += '(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')';
+			logs.insert(EL_ERROR, EL_NETWORK, tmp_str);
+
+			break;
+		}
+
+		// проверка на закрытие сервера
+		if (server.get_state() == -1) {
+			// необходимо закрыть соединение
+
+			std::vector<char> message_data;
+
+			CreateAccessDeniedMessage(message_data, "—ервер закрываетс€...");
+
+			SendTo(connection_ptr, message_data, logs);	// отправили сообщение
+
+			Sleep(200); // на вс€кий даем 200мс чтобы сообщение точно дошло
+			
+			break;	// закрываем соединение
+		}
+		else if (is_last_optimizated == false)
+			Sleep(20);
 	}
 
 	// закрытие соединени€ (потока)
+	closesocket(connection_ptr->connection);
 	server.del_connection(connection_ptr->connection);
+	return;
+}
+
+bool SendTo(serv_connection* connect_ptr, const std::vector<char>& data, EasyLogs& logs) {
+	uint32_t sended_count{ 0 };
+
+	int32_t tmp_count{ 0 };
+
+	auto last_send_time{ std::chrono::steady_clock::now() };
+
+	while (sended_count < data.size()) {	// выполн€ем пока количество реально отправленных меньше полной даты
+		tmp_count = send(connect_ptr->connection, &data[sended_count], data.size() - sended_count, 0);
+
+		if (tmp_count > 0) {
+			// значит что-то уже отправилось
+			sended_count += tmp_count;	// добавили счетчик
+			last_send_time = std::chrono::steady_clock::now();
+		}
+		else if (tmp_count == SOCKET_ERROR) {
+			if (WSAGetLastError() == WSAEWOULDBLOCK) {
+				// просто ждем
+				if (std::chrono::steady_clock::now() - last_send_time > std::chrono::seconds(5)) {
+					// словили timeout
+					std::string tmp_str{ inet_ntoa(connect_ptr->connection_addr.sin_addr) };
+					if (connect_ptr->account_ptr != nullptr)
+						tmp_str += '(' + connect_ptr->account_ptr->last_name + ' ' + connect_ptr->account_ptr->first_name[0] + '.' + connect_ptr->account_ptr->surname[0] + ')';
+					logs.insert(EL_ERROR, EL_NETWORK, "Timeout отправки данных, возможно пользователь " + tmp_str + " завис");
+
+					return false;	// отправка не завершилась
+				}
+				Sleep(5);
+			}
+			else {
+				// ошибка
+				std::string tmp_str{ inet_ntoa(connect_ptr->connection_addr.sin_addr) };
+				if (connect_ptr->account_ptr != nullptr)
+					tmp_str += '(' + connect_ptr->account_ptr->last_name + ' ' + connect_ptr->account_ptr->first_name[0] + '.' + connect_ptr->account_ptr->surname[0] + ')';
+				logs.insert(EL_ERROR, EL_NETWORK, "ќшибка отправки данных, отправка остановлена " + tmp_str);
+				
+				return false;	// отправка не завершилась
+			}
+		}
+		else {	// видимо == 0
+			// клиент закрыл соединение
+			std::string tmp_str{ inet_ntoa(connect_ptr->connection_addr.sin_addr) };
+			if (connect_ptr->account_ptr != nullptr)
+				tmp_str += '(' + connect_ptr->account_ptr->last_name + ' ' + connect_ptr->account_ptr->first_name[0] + '.' + connect_ptr->account_ptr->surname[0] + ')';
+			logs.insert(EL_ERROR, EL_NETWORK, " лиент " + tmp_str + " закрыл соединение во врем€ отправки данных");
+
+			return false;	// отправка не завершилась
+		}
+	}
+
+	return true;	// отправка успешно завершилась
 }
 
 //---------------------------------------------------------- методы классов
@@ -157,19 +302,19 @@ int MsgHead::size_of() {
 	return 10;
 }
 
-bool MsgHead::read_from_char(char* ptr) {
+bool MsgHead::read_from_char(const char* ptr) {
 	uint32_t ptr_index = 0;
 	try {
-		first_code = *reinterpret_cast<unsigned char*>(ptr + ptr_index);
+		first_code = *reinterpret_cast<const unsigned char*>(ptr + ptr_index);
 		ptr_index += sizeof(first_code);
 
-		second_code = *reinterpret_cast<unsigned char*>(ptr + ptr_index);
+		second_code = *reinterpret_cast<const unsigned char*>(ptr + ptr_index);
 		ptr_index += sizeof(second_code);
 
-		third_code = *reinterpret_cast<uint32_t*>(ptr + ptr_index);
+		third_code = *reinterpret_cast<const uint32_t*>(ptr + ptr_index);
 		ptr_index += sizeof(third_code);
 
-		msg_length = *reinterpret_cast<uint32_t*>(ptr + ptr_index);
+		msg_length = *reinterpret_cast<const uint32_t*>(ptr + ptr_index);
 	}
 	catch (...) {	// кака€-то UB
 		first_code = UCHAR_MAX;
@@ -213,9 +358,10 @@ int ServerData::get_count_of_connections() {
 	return tmp;
 }
 
-serv_connection* ServerData::add_new_connection(const SOCKET& socket) {
+serv_connection* ServerData::add_new_connection(const SOCKET& socket, const sockaddr_in& socketaddr) {
 	serv_connection* tmp_ptr = new serv_connection;
 	tmp_ptr->connection = socket;
+	tmp_ptr->connection_addr = socketaddr;
 
 	std::lock_guard<std::mutex> lock(connected_vect_mutex);
 	connected_vect.push_back(tmp_ptr);
