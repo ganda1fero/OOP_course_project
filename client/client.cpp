@@ -1,18 +1,20 @@
 #include <iostream>
 
-#include "EasyMenu.h"
-
-class client_data {
-public:
-
-	uint32_t screen_type;
-	uint32_t screen_second_type;
-
-
-};
+#include "ClientLogic.h"
 
 int main() {
-	EasyMenu menu;
+	// инициализация всего
+	SOCKET door_sock;
+	Client_data client_data;
 
+	if (SetupClient(door_sock) == false) {
+		std::cout << "Ошибка (SetupClient)";
+		return 0;
+	}
 
+	// запуск работы
+	ClientMenuLogic(door_sock, client_data);	// основная логика (меню)
+	
+	// завершение работы
+	WSACleanup();
 }

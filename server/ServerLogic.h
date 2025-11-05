@@ -12,6 +12,7 @@
 #include <iostream>
 #include <chrono>
 #include <thread>
+#include <functional>
 #include <mutex>
 #include <string>
 #include <algorithm>

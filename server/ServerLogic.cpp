@@ -215,20 +215,32 @@ void ServerThread(serv_connection* connection_ptr, EasyLogs& logs, ServerData& s
 			is_last_optimizated = true;
 			Sleep(20);
 		}
-		else { // ошибка
+		else { // ошибка SOCKET_ERROR
 			std::string ip_str = inet_ntoa(connection_ptr->connection_addr.sin_addr);
-			std::string	tmp_str{ "Ошибка приема данных от пользователя " + ip_str + " закрываю соединение"};
-			if (connection_ptr->account_ptr != nullptr)
-				tmp_str += '(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')';
-			logs.insert(EL_ERROR, EL_NETWORK, tmp_str);
 
-			std::vector<char> tmp_data;
-			CreateAccessDeniedMessage(tmp_data, "Ошибка соединения");
-			SendTo(connection_ptr, tmp_data, logs);
+			int error_code = WSAGetLastError();
+			if (error_code == WSAECONNRESET || error_code == WSAENETRESET || error_code == WSAETIMEDOUT || error_code == WSAECONNABORTED) {
+				std::string tmp_str{ "Соединение разорванно " + ip_str};
+				if (connection_ptr->account_ptr != nullptr)
+					tmp_str += '(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')';
 
-			Sleep(200);
+				logs.insert(EL_NETWORK, tmp_str);
+			}
+			else {
+				std::string	tmp_str{ "Ошибка приема данных от пользователя " + ip_str};
+				if (connection_ptr->account_ptr != nullptr)
+					tmp_str += '(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')';
+				tmp_str += ", закрываю соединение";
+				logs.insert(EL_ERROR, EL_NETWORK, tmp_str);
 
-			break;
+				std::vector<char> tmp_data;
+				CreateAccessDeniedMessage(tmp_data, "Ошибка сети");
+				SendTo(connection_ptr, tmp_data, logs);
+
+				Sleep(200);
+			}
+
+			break; // завершаем соединение
 		}
 
 		// проверка на закрытие сервера
