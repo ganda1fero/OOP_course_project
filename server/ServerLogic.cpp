@@ -1,3 +1,9 @@
+// первый char код
+#define FROM_SERVER 100	
+#define FROM_CLIENT 55
+// второй char код
+#define ACCESS_DENIED 66
+
 #include "ServerLogic.h"
 
 //---------------------------------------------------------- функции
@@ -164,8 +170,13 @@ void ServerThread(serv_connection* connection_ptr, EasyLogs& logs, ServerData& s
 					std::string tmp_str{ "Ошибка заголовка сообщения от" + ip_str};
 					if (connection_ptr->account_ptr != nullptr)
 						tmp_str += '(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')';
-					tmp_str += ". Закрываю соединение";
+					tmp_str += ". Закрываю соединение. Количество потоков: " + std::to_string(server.get_count_of_connections() - 1);
 					logs.insert(EL_ERROR, EL_NETWORK, tmp_str);
+
+					std::vector<char> tmp_data;
+					CreateAccessDeniedMessage(tmp_data, "Неверный протокол общения");
+					SendTo(connection_ptr, tmp_data, logs);
+					Sleep(200);		// на всякий случай, чтобы успел отправить
 
 					closesocket(connection_ptr->connection);
 					server.del_connection(connection_ptr->connection);
@@ -177,6 +188,9 @@ void ServerThread(serv_connection* connection_ptr, EasyLogs& logs, ServerData& s
 					
 				if (ProcessMessage(msg_header, recv_buffer, connection_ptr, server, logs) == false) { // необходимо закрыть соединение
 					// ошибку логирует Process
+
+					Sleep(200);	// на всякий (чтобы все сообщения успели дойтиы)
+
 					closesocket(connection_ptr->connection);
 					server.del_connection(connection_ptr->connection);
 					return;
@@ -208,6 +222,12 @@ void ServerThread(serv_connection* connection_ptr, EasyLogs& logs, ServerData& s
 				tmp_str += '(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')';
 			logs.insert(EL_ERROR, EL_NETWORK, tmp_str);
 
+			std::vector<char> tmp_data;
+			CreateAccessDeniedMessage(tmp_data, "Ошибка соединения");
+			SendTo(connection_ptr, tmp_data, logs);
+
+			Sleep(200);
+
 			break;
 		}
 
@@ -230,6 +250,14 @@ void ServerThread(serv_connection* connection_ptr, EasyLogs& logs, ServerData& s
 	}
 
 	// закрытие соединения (потока)
+	std::string tmp_str{ "Соединение с " };
+	tmp_str += inet_ntoa(connection_ptr->connection_addr.sin_addr);
+	if (connection_ptr->account_ptr != nullptr)
+		tmp_str += '(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')';
+	tmp_str += " закрыто. Количество потоков: " + std::to_string(server.get_count_of_connections() - 1);
+
+	logs.insert(EL_NETWORK, tmp_str);
+
 	closesocket(connection_ptr->connection);
 	server.del_connection(connection_ptr->connection);
 	return;
@@ -286,6 +314,52 @@ bool SendTo(serv_connection* connect_ptr, const std::vector<char>& data, EasyLog
 	}
 
 	return true;	// отправка успешно завершилась
+}
+
+void CreateAccessDeniedMessage(std::vector<char>& vect, std::string text) {
+	unsigned char uchar_buffer{ 0 };
+	uint32_t uint32_t_buffer{ 0 };
+	char* tmp_ptr;
+
+	vect.clear();
+	
+	uchar_buffer = FROM_SERVER;	// от сервера
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = ACCESS_DENIED;	// отказ доступа
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 0;	// пустой под_код
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = text.length();	// размер полезной инфы
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	if (text.length() > 0) // сама полезная инфа
+		vect.insert(vect.end(), &text[0], &text[0] + text.length());
+
+	return;
+}
+
+bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
+	if (msg_header.first_code != FROM_CLIENT)
+		return false;	// видимо пришло нет от клиента (почему-то)
+
+	switch (msg_header.second_code)
+	{
+	case ACCESS_DENIED:
+
+		break;
+	default:
+		return false;	// какой-то неизвестный код
+		break;
+	}
+	
+	return true;
 }
 
 //---------------------------------------------------------- методы классов
