@@ -5,6 +5,7 @@
 #define FROM_CLIENT 55
 // второй char код
 #define ACCESS_DENIED 66
+#define AUTHORISATION 2
 
 // методы классов
 
@@ -52,6 +53,207 @@ Client_data::Client_data(){
 
 // функции
 
+void ClientMenuLogic(Client_data& client_data) {
+	int32_t last_pressed{ 0 };
+	bool is_pressed{ false };
+
+	AuthorisationMenu(client_data, "");
+
+	while (true) {	// тело цикла
+		int32_t tmp_type;
+		{
+			std::lock_guard<std::mutex> lock(client_data.screen_info_mutex);
+			tmp_type = client_data.screen_info_.role;
+		}
+
+		if (tmp_type != NO_ROLE) {
+			{
+				std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+				client_data.menu_.advanced_tick();
+				if (client_data.menu_.advanced_is_pressed()) {
+					last_pressed = client_data.menu_.advanced_pressed_butt();
+					is_pressed = true;
+				}
+			}
+
+			if (is_pressed) {
+				is_pressed = false;
+				ClientClickLogic(last_pressed, client_data);
+			}
+			else
+				Sleep(10);
+		}
+		else {	// значит меню авторизации
+			if (AuthorisationMenuLogic(client_data) == false)
+				break;
+
+			auto start_time = std::chrono::steady_clock::now();
+
+			while (std::chrono::steady_clock::now() - start_time < std::chrono::seconds(5)) {
+				std::lock_guard<std::mutex> lock1(client_data.screen_info_mutex);
+				std::lock_guard<std::mutex> lock2(client_data.state_mutex);
+
+				if (client_data.state_ == -1 || client_data.screen_info_.role != NO_ROLE)
+					break;
+				else
+					Sleep(50);
+			}
+		}
+	}
+
+	// завершение работы
+	{
+		std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+		client_data.menu_.advanced_clear_console();
+		
+		std::cout << "Завершение работы";
+	}
+	bool tmp_bool;
+	{
+		std::lock_guard<std::mutex> lock(client_data.is_connected_mutex);
+		tmp_bool = client_data.is_connected_;
+	}
+
+	if (tmp_bool) {
+		{
+			std::lock_guard<std::mutex> lock(client_data.state_mutex);
+			client_data.state_ = -1;
+		}
+
+		if (client_data.connect_thread.joinable())
+			client_data.connect_thread.join();
+	}
+}
+
+bool AuthorisationMenuLogic(Client_data& client_data) {
+	bool idk;
+	bool eye_flag{ false };
+	
+	client_data.menu_.advanced_clear_console();
+
+	while (true) {	// главное тело
+		switch (client_data.menu_.easy_run())
+		{
+		case 2:	// глазок
+			eye_flag = !eye_flag;
+			{
+				std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+				if (eye_flag) { // показать 
+					client_data.menu_.set_advanced_cin_secure_input_off(1);
+					client_data.menu_.edit(2, "Скрыть пароль");
+				}
+				else {	// скрыть
+					client_data.menu_.set_advanced_cin_secure_input_on(1);
+					client_data.menu_.edit(2, "Показать пароль");
+				}
+			}
+			break;
+		case 3:	// авторизация
+			idk = true;
+			{
+				std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+				if (client_data.menu_.is_all_advanced_cin_correct() == false) {
+					client_data.menu_.set_notification(3, "(Исправьте ошибки в вводе)");
+					break;
+				}
+
+				if (client_data.menu_.get_advanced_cin_input(0).length() != 8) {
+					client_data.menu_.set_notification(0, "(Длина должна быть равна 8-ми)");
+					break;
+				}
+
+				if (client_data.menu_.get_advanced_cin_input(0)[0] == '0') {
+					client_data.menu_.set_notification(0, "(Логин не может начинаться с \'0\')");
+					break;
+				}
+
+				if (client_data.menu_.get_advanced_cin_input(1).length() < 4) {
+					client_data.menu_.set_notification(1, "(Длина должна быть от 3-х)");
+					break;
+				}
+
+				client_data.menu_.delete_all_notifications();
+			}	// проходим дальше если не было ошибок
+
+			if (ConnectClient(client_data)) {
+				std::vector<char> data;
+				std::string tmp_login, tmp_password;
+
+				{
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+					tmp_login = client_data.menu_.get_advanced_cin_input(0);
+					tmp_password = client_data.menu_.get_advanced_cin_input(1);
+				}
+
+				CreateAuthorisationMessage(tmp_login, tmp_password, data);
+
+				if (SendTo(client_data, data) == false) {
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+					client_data.menu_.set_notification(3, "(Ошибка отправки запроса)");
+					break;
+				}
+
+				return true;
+			}
+			else {
+				std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+				client_data.menu_.set_notification(3, "(Не удалось подключиться)");
+			}
+			break;
+		case 4:	// выход
+			return false;
+			break;
+		}
+	}
+}
+
+void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
+	screen_data tmp_screen_data;
+	{
+		std::lock_guard<std::mutex> lock(client_data.screen_info_mutex);
+		tmp_screen_data = client_data.screen_info_;
+	}
+
+	switch (tmp_screen_data.role)
+	{
+	case STUDENT_ROLE:
+
+		break;
+	case TEACHER_ROLE:
+		switch (client_data.screen_info_.type) {
+		case 1:
+			switch (pressed_but)
+			{
+			case 0:
+
+				break;
+			case 1:
+
+				break;
+			case 2:	// выход из аккаунта
+				{
+					std::lock_guard<std::mutex> lock(client_data.state_mutex);
+					client_data.state_ = -1;
+				}
+
+				break;
+			}
+			break;
+		}
+
+		break;
+
+	case ADMIN_ROLE:
+
+		break;
+	}
+}
+
 bool SetupClient(Client_data& client_data) {
 	WORD wVersionRequested;
 	WSADATA wsaData;
@@ -69,7 +271,7 @@ bool SetupClient(Client_data& client_data) {
 		return false;	// выход
 	}	// Сокет открыт
 
-	return true;	// успешный запуск (+ подключение)
+	return true;	// успешный запуск
 }
 
 bool ConnectClient(Client_data& client_data) {
@@ -84,8 +286,15 @@ bool ConnectClient(Client_data& client_data) {
 			client_data.state_ = -1;	// закрытие соединения
 			client_data.state_mutex.unlock();
 
-			client_data.connect_thread.join();	// ждем завершение потока
+			if (client_data.connect_thread.joinable())
+				client_data.connect_thread.join();	// ждем завершение потока
 		}
+	}
+
+	client_data.door_sock = socket(AF_INET, SOCK_STREAM, 0);
+	if (client_data.door_sock == INVALID_SOCKET) {
+		std::cout << "Ошибка создания сокета!" << std::endl;
+		return false;
 	}
 
 	sockaddr_in server_adress;
@@ -104,6 +313,7 @@ bool ConnectClient(Client_data& client_data) {
 		std::cout << "Не удалось подключиться! ";
 		
 		closesocket(client_data.door_sock);
+		client_data.door_sock = INVALID_SOCKET;
 
 		return false;
 	}
@@ -114,6 +324,10 @@ bool ConnectClient(Client_data& client_data) {
 	{
 		std::lock_guard<std::mutex> lock(client_data.is_connected_mutex);
 		client_data.is_connected_ = true;
+	}
+	{
+		std::lock_guard<std::mutex> lock(client_data.state_mutex);
+		client_data.state_ = 0;
 	}
 
 	client_data.connect_thread = std::thread(ClientThread, std::ref(client_data));
@@ -137,7 +351,7 @@ void ClientThread(Client_data& client_data) {
 
 		if (packet_size > 0) {	// прочитали какие-то данные
 
-			recv_buffer.insert(recv_buffer.begin(), packet_buffer, packet_buffer + packet_size);	// добавили в общий массив
+			recv_buffer.insert(recv_buffer.end(), packet_buffer, packet_buffer + packet_size);	// добавили в общий массив
 
 			while (true) {	// пытаемся прочиать все возможные запросы
 				if (recv_buffer.size() < msg_header.size_of())
@@ -146,15 +360,12 @@ void ClientThread(Client_data& client_data) {
 				if (msg_header.read_from_char(&recv_buffer[0]) == false) {
 					// ошибка, закрываем соединение
 					{
-						std::lock_guard<std::mutex> lock(client_data.is_connected_mutex);
-						client_data.is_connected_ = false;
-					}
-					{
 						std::lock_guard<std::mutex> lock(client_data.state_mutex);
 						client_data.state_ = -1;
 					}
 
 					closesocket(client_data.door_sock);
+					client_data.door_sock = INVALID_SOCKET;
 
 					AuthorisationMenu(client_data, "Ошибка приема данных");
 
@@ -167,17 +378,14 @@ void ClientThread(Client_data& client_data) {
 				if (ProcessMessage(msg_header, recv_buffer, client_data) == false) {
 					// ошибка, закрываем соединение
 					{
-						std::lock_guard<std::mutex> lock(client_data.is_connected_mutex);
-						client_data.is_connected_ = false;
-					}
-					{
 						std::lock_guard<std::mutex> lock(client_data.state_mutex);
 						client_data.state_ = -1;
 					}
 
 					closesocket(client_data.door_sock);
+					client_data.door_sock = INVALID_SOCKET;
 
-					AuthorisationMenu(client_data, "Ошибка протокола/сети");
+					AuthorisationMenu(client_data, "");
 
 					return;
 				}
@@ -202,17 +410,10 @@ void ClientThread(Client_data& client_data) {
 			std::lock_guard<std::mutex> lock1(client_data.is_connected_mutex);
 			std::lock_guard<std::mutex> lock2(client_data.state_mutex);
 
-			if (client_data.is_connected_ == false || client_data.state_ == -1) {
-				{
-					std::lock_guard<std::mutex> lock1(client_data.is_connected_mutex);
-					client_data.is_connected_ = false;
-				}
-				{
-					std::lock_guard<std::mutex> lock2(client_data.state_mutex);
-					client_data.state_ = -1;
-				}
+			if (client_data.state_ == -1) {
 
 				closesocket(client_data.door_sock);
+				client_data.door_sock = INVALID_SOCKET;
 
 				AuthorisationMenu(client_data, "");
 
@@ -225,17 +426,14 @@ void ClientThread(Client_data& client_data) {
 
 	// закрытие соединения
 	{
-		std::lock_guard<std::mutex> lock(client_data.is_connected_mutex);
-		client_data.is_connected_ = false;
-	}
-	{
 		std::lock_guard<std::mutex> lock(client_data.state_mutex);
 		client_data.state_ = -1;
 	}
 
 	closesocket(client_data.door_sock);
+	client_data.door_sock = INVALID_SOCKET;
 
-	AuthorisationMenu(client_data, "");
+	AuthorisationMenu(client_data, "Неверный логин/пароль");
 
 	return;
 }
@@ -248,6 +446,23 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 	{
 	case ACCESS_DENIED:
 		return AccessDenied(msg_header, recv_buffer, client_data);
+		break;
+	case AUTHORISATION:
+		switch (msg_header.third_code)
+		{
+		case STUDENT_ROLE:
+
+			break;
+		case TEACHER_ROLE:
+			return AuthorisationAsTeacher(msg_header, recv_buffer, client_data);
+			break;
+		case ADMIN_ROLE:
+
+			break;
+		default:
+			return false;
+			break;
+		}
 		break;
 	default:
 		return false;	// неизвестная команда
@@ -280,6 +495,35 @@ bool AccessDenied(const MsgHead& msg_header, const std::vector<char>& recv_buffe
 
 	AuthorisationMenu(client_data, str_buffer);
 
+	{
+		std::lock_guard<std::mutex> lock(client_data.state_mutex);
+		client_data.state_ = -1;
+	}
+
+	return true;
+}
+
+bool AuthorisationAsTeacher(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data) {
+	// буферы
+	unsigned char uchar_buffer{ 0 };
+	uint32_t uint32_t_buffer{ 0 };
+	std::string str_buffer;
+
+	// указатель  
+	uint32_t index = msg_header.size_of();
+
+	try {
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		str_buffer.insert(str_buffer.begin(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+	}
+	catch (...) {
+		return false;
+	}
+
+	TeacherMenu(client_data, str_buffer);
+
 	return true;
 }
 
@@ -299,11 +543,15 @@ void AuthorisationMenu(Client_data& client_data, std::string text) {
 
 	client_data.menu_.push_back_advanced_cin("Логин:");
 	client_data.menu_.set_advanced_cin_new_allowed_chars(0, "1234567890");
+	client_data.menu_.set_advanced_cin_max_input_length(0, 8);
 
 	client_data.menu_.push_back_advanced_cin("Пароль:");
 	client_data.menu_.set_advanced_cin_ban_not_allowed_on(1);
 	client_data.menu_.set_advanced_cin_new_allowed_chars(1, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM_1234567890");
 	client_data.menu_.set_advanced_cin_secure_input_on(1);
+
+	client_data.menu_.push_back_butt("Показать пароль");
+	client_data.menu_.set_color(2, MAGENTA_COLOR);
 
 	client_data.menu_.push_back_butt("Войти");
 	
@@ -314,4 +562,107 @@ void AuthorisationMenu(Client_data& client_data, std::string text) {
 	client_data.screen_info_.type = AUTHORISATION_MENUTYPE;
 	client_data.screen_info_.id = 0;
 	client_data.screen_info_.role = NO_ROLE;
+}
+
+void TeacherMenu(Client_data& client_data, std::string text) {
+	std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+	client_data.menu_.clear();
+
+	client_data.menu_.set_info("Здравствуйте, " + text);
+	client_data.menu_.set_info_main_color(LIGHT_YELLOW_COLOR);
+
+	client_data.menu_.push_back_butt("Упр заданиями");
+
+	client_data.menu_.push_back_butt("Добавить задание");
+
+	client_data.menu_.push_back_butt("Выход из аккаунта");
+
+	client_data.menu_.advanced_clear_console();
+	client_data.menu_.advanced_display_menu();
+
+	std::lock_guard<std::mutex> lock2(client_data.screen_info_mutex);
+
+	client_data.screen_info_.type = 1;
+	client_data.screen_info_.id = 0;
+	client_data.screen_info_.role = TEACHER_ROLE;
+}
+
+bool SendTo(Client_data& client_data, const std::vector<char>& data) {
+	uint32_t sended_count{ 0 };
+
+	int32_t tmp_count{ 0 };
+
+	auto last_send_time{ std::chrono::steady_clock::now() };
+
+	while (sended_count < data.size()) {	// выполняем пока количество реально отправленных меньше полной даты
+		tmp_count = send(client_data.door_sock, &data[sended_count], data.size() - sended_count, 0);
+
+		if (tmp_count > 0) {
+			// значит что-то уже отправилось
+			sended_count += tmp_count;	// добавили счетчик
+			last_send_time = std::chrono::steady_clock::now();
+		}
+		else if (tmp_count == SOCKET_ERROR) {
+			if (WSAGetLastError() == WSAEWOULDBLOCK) {
+				// просто ждем
+				if (std::chrono::steady_clock::now() - last_send_time > std::chrono::seconds(5)) {
+					return false;	// отправка не завершилась
+				}
+				Sleep(5);
+			}
+			else {
+				// ошибка
+				return false;	// отправка не завершилась
+			}
+		}
+		else {	// видимо == 0
+			// клиент закрыл соединение
+			return false;	// отправка не завершилась
+		}
+	}
+
+	return true;	// отправка успешно завершилась
+}
+
+void CreateAuthorisationMessage(const std::string& login, const std::string& password, std::vector<char>& vect) {
+	unsigned char uchar_buffer{ 0 };
+	uint32_t uint32_t_buffer{ 0 };
+	char* tmp_ptr{ nullptr };
+	
+	// с начала всю полезную инфу
+	std::vector<char> main_data;
+
+	uint32_t_buffer = login.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), login.begin(), login.end());
+
+	uint32_t_buffer = password.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), password.begin(), password.end());
+	
+	// дальше само сообщение
+	vect.clear();
+
+	uchar_buffer = FROM_CLIENT;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = AUTHORISATION;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 0;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = main_data.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	vect.insert(vect.end(), main_data.begin(), main_data.end());
 }

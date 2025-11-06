@@ -5,6 +5,7 @@
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 
 #include <iostream>
+#include <chrono>
 
 #include <WinSock2.h>
 #include <ws2tcpip.h>  // для getaddrinfo, freeaddrinfo
@@ -41,8 +42,8 @@ public:
 };
 
 struct screen_data {
-	int32_t role{ 0 };	// роль (из server role)
-	int32_t type{ 0 };	// тип, например "авторизация"
+	int32_t role{ NO_ROLE };	// роль (из server role)
+	int32_t type{ AUTHORISATION_MENUTYPE };	// тип, например "авторизация"
 	int32_t id{ 0 };	// доп id (на всякий)
 };
 
@@ -54,7 +55,6 @@ public:
 	// поля
 	SOCKET door_sock;
 	std::thread connect_thread;
-
 
 	std::mutex menu_mutex;
 	EasyMenu menu_;
@@ -72,6 +72,8 @@ public:
 // функции
 
 void ClientMenuLogic(Client_data& client_data);
+bool AuthorisationMenuLogic(Client_data& client_data);
+void ClientClickLogic(int32_t pressed_but, Client_data& client_data);
 
 bool SetupClient(Client_data& client_data);
 bool ConnectClient(Client_data& client_data);
@@ -82,7 +84,17 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 // для ProcessMessage
 bool AccessDenied(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
 
+bool AuthorisationAsTeacher(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
+
 // менюшки
 void AuthorisationMenu(Client_data& client_data, std::string text);
+
+void TeacherMenu(Client_data& client_data, std::string text);
+
+// запросы
+bool SendTo(Client_data& client_data, const std::vector<char>& data);
+
+void CreateAuthorisationMessage(const std::string& login, const std::string& password, std::vector<char>& vect);
+
 
 #endif

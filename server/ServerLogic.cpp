@@ -3,6 +3,7 @@
 #define FROM_CLIENT 55
 // второй char код
 #define ACCESS_DENIED 66
+#define AUTHORISATION 2
 
 #include "ServerLogic.h"
 
@@ -363,6 +364,50 @@ void CreateAccessDeniedMessage(std::vector<char>& vect, std::string text) {
 	return;
 }
 
+void CreateAuthorisationTeaherMessage(std::vector<char>& vect, serv_connection* connection_ptr) {
+	std::string tmp_str;
+	if (connection_ptr->account_ptr != nullptr)
+		tmp_str = connection_ptr->account_ptr->first_name;
+	else
+		tmp_str = "none";
+
+	// полезные данные
+	std::vector<char> main_data;
+
+	// временные переменные
+	uint32_t uint32_t_buffer;
+	unsigned char uchar_buffer;
+	char* tmp_ptr;
+
+	// сам перевод
+	uint32_t_buffer = tmp_str.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), &tmp_str[0], &tmp_str[0] + tmp_str.size());
+
+	// дальше служебные
+	vect.clear();
+
+	uchar_buffer = FROM_SERVER;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = AUTHORISATION;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = TEACHER_ROLE;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = main_data.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
 bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
 	if (msg_header.first_code != FROM_CLIENT) {
 		std::string tmp_str{ "ќшибка первичного кода сообщени€ от " };
@@ -371,13 +416,16 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 			tmp_str += '(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')';
 		tmp_str += ". «акрываю соединение";
 		logs.insert(EL_ERROR, EL_NETWORK, tmp_str);
-		return false;	// видимо пришло нет от клиента (почему-то)
+		return false;	// видимо пришло не от клиента (почему-то)
 	}
 
 	switch (msg_header.second_code)
 	{
 	case ACCESS_DENIED:
 
+		break;
+	case AUTHORISATION:
+		return ProcessAuthorisationMessage(msg_header, recv_buffer, connection_ptr, server, logs);
 		break;
 	default:	// заглушка дл€ неизвестных
 		std::string tmp_str{ "Ќеизвестный вторичный код сообщени€ от " };
@@ -393,6 +441,75 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 	return true;
 }
 
+bool ProcessAuthorisationMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
+	std::string tmp_login, tmp_password;
+	uint32_t uint32_t_buffer;
+
+	uint32_t index = msg_header.size_of();
+	try {
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		tmp_login.insert(tmp_login.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		index += uint32_t_buffer;
+
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		tmp_password.insert(tmp_password.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+	}
+	catch (...) {
+		std::string tmp_str{ "ќшибка открыти€ запроса от " };
+		tmp_str += inet_ntoa(connection_ptr->connection_addr.sin_addr);
+		logs.insert(EL_ACTION, EL_NETWORK, EL_ERROR, tmp_str);
+		return false;
+	}
+
+	// дальше провер€ем 
+	std::vector<account_note> accounts = server.get_all_account_notes();
+
+	uint32_t tmp_login_uint = std::stoi(tmp_login);
+
+	auto it = std::lower_bound(accounts.begin(), accounts.end(), tmp_login_uint,
+		[](const account_note& first_ptr, const uint32_t& nedded) {
+			return first_ptr.id < nedded;
+		});
+
+	if (it == accounts.end() || (*it).id != tmp_login_uint) {
+		return false;
+	}
+
+	// значит нашли
+	if ((*it).password != tmp_password) {
+		std::string tmp_str{"Ќеверный пароль дл€ пользовател€ (" + std::to_string((*it).id) + ')'};
+		tmp_str += inet_ntoa(connection_ptr->connection_addr.sin_addr);
+		logs.insert(EL_ACTION, EL_SECURITY, EL_ERROR, tmp_str);
+
+		return false;
+	}
+
+	// значит авторизаци€ удачна€
+	connection_ptr->account_ptr = server.get_account_ptr(tmp_login_uint);
+
+	std::vector<char> data;
+	switch ((*it).role) {
+	case USER_ROLE:
+		//CreateAuthorisationStudentMessage(data, connection_ptr);
+		break;	
+	case TEACHER_ROLE:
+		CreateAuthorisationTeaherMessage(data, connection_ptr);
+		break;
+	case ADMIN_ROLE:
+		
+		break;
+	default:
+		return false;
+		break;
+	}
+
+	return SendTo(connection_ptr, data, logs);
+}
+
 //---------------------------------------------------------- методы классов
 
 //---------------------- MsgHead
@@ -403,7 +520,7 @@ MsgHead::MsgHead() {
 	msg_length = 0;
 }
 
-int MsgHead::size_of() {
+int MsgHead::size_of() const {
 	return 10;
 }
 
@@ -597,6 +714,24 @@ std::vector<account_note> ServerData::get_all_account_notes() {
 	}
 
 	return tmp_vect;
+}
+
+account_note* ServerData::get_account_ptr(uint32_t nedded_id) {
+	std::vector<account_note*> tmp_accounts;
+	{
+		std::lock_guard<std::mutex> lock(accounts_mutex);
+		tmp_accounts = accounts;
+	}
+
+	auto it = std::lower_bound(tmp_accounts.begin(), tmp_accounts.end(), nedded_id,
+		[](const account_note* first, const uint32_t& nedded) {
+			return first->id < nedded;
+		});
+
+	if (it == tmp_accounts.end() || (*it)->id != nedded_id)
+		return nullptr;
+
+	return *it;
 }
 
 void ServerData::__clear_accounts__() {

@@ -50,7 +50,7 @@ class MsgHead {
 public:
 	MsgHead();
 	bool read_from_char(const char* ptr);
-	int size_of();
+	int size_of() const;
 
 	unsigned char first_code;	// 1b
 	unsigned char second_code;	// 1b
@@ -84,6 +84,7 @@ public:
 	bool insert_new_account(uint32_t id, uint32_t role, std::string password, std::string first_name, std::string last_name, std::string surname, std::string faculty);
 	bool change_account_data(const uint32_t& nedded_id, uint32_t role, std::string first_name, std::string last_name, std::string surname, std::string faculty);
 	std::vector<account_note> get_all_account_notes();
+	account_note* get_account_ptr(uint32_t nedded_id);
 
 private:
 	// поля
@@ -118,7 +119,11 @@ bool SendTo(serv_connection* connect_ptr, const std::vector<char>& data, EasyLog
 //------------------(Функции составления message)
 void CreateAccessDeniedMessage(std::vector<char>& vect, std::string text);
 
-//------------------(Функции чтения message)
+//void CreateAuthorisationStudentMessage(std::vector<char>& vect, serv_connection* connection_ptr);
+void CreateAuthorisationTeaherMessage(std::vector<char>& vect, serv_connection* connection_ptr);
+//void CreateAuthorisationAdminMessage(std::vector<char>& vect, serv_connection* connection_ptr);
 
+//------------------(Функции чтения message)
+bool ProcessAuthorisationMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 
 #endif
