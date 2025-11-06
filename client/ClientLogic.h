@@ -11,6 +11,7 @@
 #pragma comment(lib, "ws2_32.lib") // доподключаем реализацию библиотеку WSA
 
 #include <thread>
+#include <functional>
 #include <mutex>
 
 #include "EasyMenu.h"
@@ -21,9 +22,23 @@
 #define TEACHER_ROLE 2
 #define ADMIN_ROLE 3
 
+#define AUTHORISATION_MENUTYPE 0
+
 //-----------------------------------------------------------------------------
 
 // классы - структруры
+
+class MsgHead {
+public:
+	MsgHead();
+	bool read_from_char(const char* ptr);
+	int size_of() const;
+
+	unsigned char first_code;	// 1b
+	unsigned char second_code;	// 1b
+	uint32_t third_code;		// 4b
+	uint32_t msg_length;		// 4b
+};
 
 struct screen_data {
 	int32_t role{ 0 };	// роль (из server role)
@@ -37,6 +52,10 @@ public:
 	Client_data();
 
 	// поля
+	SOCKET door_sock;
+	std::thread connect_thread;
+
+
 	std::mutex menu_mutex;
 	EasyMenu menu_;
 
@@ -45,15 +64,25 @@ public:
 
 	std::mutex state_mutex;
 	int32_t state_;
+
+	std::mutex is_connected_mutex;
+	bool is_connected_;
 };
 
 // функции
 
-void ClientMenuLogic(SOCKET& door_sock, Client_data& client_data);
+void ClientMenuLogic(Client_data& client_data);
 
-bool SetupClient(SOCKET& door_sock);
-bool ConnectClient(SOCKET& door_sock);
+bool SetupClient(Client_data& client_data);
+bool ConnectClient(Client_data& client_data);
 
-void ClientThread(SOCKET& connection_sock, Client_data& client_data);
+void ClientThread(Client_data& client_data);	// только для чтения
+bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
+
+// для ProcessMessage
+bool AccessDenied(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
+
+// менюшки
+void AuthorisationMenu(Client_data& client_data, std::string text);
 
 #endif

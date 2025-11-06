@@ -7,13 +7,13 @@ int main() {
 	SOCKET door_sock;
 	Client_data client_data;
 
-	if (SetupClient(door_sock) == false) {
+	if (SetupClient(client_data) == false) {
 		std::cout << "Ошибка (SetupClient)";
 		return 0;
 	}
 
 	// запуск работы
-	ClientMenuLogic(door_sock, client_data);	// основная логика (меню)
+	ClientMenuLogic(client_data);	// основная логика (меню)
 	
 	// завершение работы
 	WSACleanup();

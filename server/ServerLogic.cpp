@@ -347,7 +347,13 @@ void CreateAccessDeniedMessage(std::vector<char>& vect, std::string text) {
 	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 
-	uint32_t_buffer = text.length();	// размер полезной инфы
+	uint32_t_buffer = text.length() + sizeof(uint32_t);	// размер полезной инфы
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	// сама полезная чать 
+
+	uint32_t_buffer = text.length();
 	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 
@@ -358,15 +364,28 @@ void CreateAccessDeniedMessage(std::vector<char>& vect, std::string text) {
 }
 
 bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
-	if (msg_header.first_code != FROM_CLIENT)
+	if (msg_header.first_code != FROM_CLIENT) {
+		std::string tmp_str{ "Ошибка первичного кода сообщения от " };
+		tmp_str += inet_ntoa(connection_ptr->connection_addr.sin_addr);
+		if (connection_ptr->account_ptr != nullptr)
+			tmp_str += '(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')';
+		tmp_str += ". Закрываю соединение";
+		logs.insert(EL_ERROR, EL_NETWORK, tmp_str);
 		return false;	// видимо пришло нет от клиента (почему-то)
+	}
 
 	switch (msg_header.second_code)
 	{
 	case ACCESS_DENIED:
 
 		break;
-	default:
+	default:	// заглушка для неизвестных
+		std::string tmp_str{ "Неизвестный вторичный код сообщения от " };
+		tmp_str += inet_ntoa(connection_ptr->connection_addr.sin_addr);
+		if (connection_ptr->account_ptr != nullptr)
+			tmp_str += '(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')';
+		tmp_str += ". Закрываю соединение";
+		logs.insert(EL_ERROR, EL_NETWORK, tmp_str);
 		return false;	// какой-то неизвестный код
 		break;
 	}
