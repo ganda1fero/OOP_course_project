@@ -40,6 +40,7 @@ int main() {
 	server.ReadFromFile();
 
 	logs.insert(EL_SYSTEM, "Найдено аккаунтов: " + std::to_string(server.get_all_account_notes().size()));
+	logs.insert(EL_SYSTEM, "Найдено заданий: " + std::to_string(server.get_count_of_all_tasks()));
 	
 	std::thread door_thread(ServerMain, std::ref(door_sock), std::ref(logs), std::ref(server));	// открыли поток
 	

@@ -46,6 +46,40 @@ struct serv_connection {	// информация о соединении
 	time_t last_action{ std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()) };
 };
 
+//////////////////////////////////////////
+
+struct cheacks
+{
+	bool is_good{ false };	// успешная попытка?
+
+	std::string info{ "" };	// доп инфа
+
+	std::string cpp_file{ "" };	// путь к отправленному cpp файлу
+
+	uint32_t memory_bytes{ 0 };	// количество памяти
+	uint32_t cpu_time_ms{ 0 };	// количество времени
+};
+
+struct id_cheack
+{
+	uint32_t account_id{ 0 };	// id аккаунта
+	
+	std::vector<cheacks> all_tryes;	// все его попытки
+};
+
+
+struct task_note {
+	std::string task_name;	// название
+
+	std::string task_info;	// описание
+
+	std::string input_file{ "" };	// значения input
+	std::string output_file{ "" };	// значениея output
+
+	std::vector<id_cheack> checked_accounts;	// все аккаунты и их попытки
+};
+
+//////////////////////////////////////////
 class MsgHead {
 public:
 	MsgHead();
@@ -86,6 +120,11 @@ public:
 	std::vector<account_note> get_all_account_notes();
 	account_note* get_account_ptr(uint32_t nedded_id);
 
+	// методы (all_tasks)
+	uint32_t get_count_of_all_tasks();
+	void create_new_task(const std::string& name, const std::string& info, const std::string& input, const std::string& output);
+
+
 private:
 	// поля
 	std::mutex state_mutex;
@@ -100,7 +139,13 @@ private:
 	bool __read_from_file_accounts__();
 	void __save_to_file_accounts__();
 	void __sort_accounts__();
-	
+
+	std::mutex tasks_mutex;
+	std::vector<task_note*> all_tasks;
+	void __clear_all_tasks__();
+	bool __read_from_file_all_tasks__();
+	void __save_to_file_all_tasks__();
+
 	// методы
 
 };
@@ -123,7 +168,11 @@ void CreateAccessDeniedMessage(std::vector<char>& vect, std::string text);
 void CreateAuthorisationTeaherMessage(std::vector<char>& vect, serv_connection* connection_ptr);
 //void CreateAuthorisationAdminMessage(std::vector<char>& vect, serv_connection* connection_ptr);
 
+void CreateConfirmCreateTaskMessage(std::vector<char>& vect, serv_connection* connection_ptr);
+
+
 //------------------(Функции чтения message)
 bool ProcessAuthorisationMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessCreateNewTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 
 #endif

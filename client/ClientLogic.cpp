@@ -6,6 +6,7 @@
 // второй char код
 #define ACCESS_DENIED 66
 #define AUTHORISATION 2
+#define CREATE_NEW_TASK 22
 
 // методы классов
 
@@ -91,13 +92,18 @@ void ClientMenuLogic(Client_data& client_data) {
 			auto start_time = std::chrono::steady_clock::now();
 
 			while (std::chrono::steady_clock::now() - start_time < std::chrono::seconds(5)) {
-				std::lock_guard<std::mutex> lock1(client_data.screen_info_mutex);
-				std::lock_guard<std::mutex> lock2(client_data.state_mutex);
+				bool tmp_bool;
+				{
+					std::lock_guard<std::mutex> lock1(client_data.screen_info_mutex);
+					std::lock_guard<std::mutex> lock2(client_data.state_mutex);
+					
+					tmp_bool = client_data.state_ == -1 || client_data.screen_info_.role != NO_ROLE;
+				}
 
-				if (client_data.state_ == -1 || client_data.screen_info_.role != NO_ROLE)
+				if (tmp_bool)
 					break;
 				else
-					Sleep(50);
+					Sleep(5);
 			}
 		}
 	}
@@ -229,11 +235,25 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 		case 1:
 			switch (pressed_but)
 			{
-			case 0:
+			case 0:	// урп заданиями 
 
 				break;
-			case 1:
-
+			case 1:	// создать новое задание
+				{
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+					client_data.menu_.set_notification(1, "(В обработке...)");
+				}
+				if (TeacherCreateNewTask(client_data)) {
+					// был отправлен запрос на создание 
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+					client_data.menu_.advanced_display_menu();
+				}
+				else {
+					// просто выход (без запроса на создание)
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+					client_data.menu_.set_notification(1, "");
+					client_data.menu_.advanced_display_menu();
+				}
 				break;
 			case 2:	// выход из аккаунта
 				{
@@ -464,6 +484,9 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 			break;
 		}
 		break;
+	case CREATE_NEW_TASK:
+		return ConfirmCreateTask(msg_header, recv_buffer, client_data);
+		break;
 	default:
 		return false;	// неизвестная команда
 		break;
@@ -527,6 +550,22 @@ bool AuthorisationAsTeacher(const MsgHead& msg_header, const std::vector<char>& 
 	return true;
 }
 
+bool ConfirmCreateTask(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data) {
+	std::lock_guard<std::mutex> lock(client_data.screen_info_mutex);
+
+	if (msg_header.third_code == 2 && client_data.screen_info_.role == TEACHER_ROLE && client_data.screen_info_.type == 1) {
+		std::lock_guard<std::mutex> lock2(client_data.menu_mutex);
+
+		client_data.menu_.set_notification(1, "Успешно создано!");
+		client_data.menu_.set_notification_color(1, GREEN_COLOR);
+
+		client_data.menu_.advanced_clear_console();
+		client_data.menu_.advanced_display_menu();
+	}
+	
+	return true;
+}
+
 void AuthorisationMenu(Client_data& client_data, std::string text) {
 	std::lock_guard<std::mutex> lock(client_data.menu_mutex);
 
@@ -586,6 +625,136 @@ void TeacherMenu(Client_data& client_data, std::string text) {
 	client_data.screen_info_.type = 1;
 	client_data.screen_info_.id = 0;
 	client_data.screen_info_.role = TEACHER_ROLE;
+}
+
+bool TeacherCreateNewTask(Client_data& client_data){
+	std::string input_file;
+	std::string output_file;
+
+	EasyMenu tmp_menu;
+	tmp_menu.set_info("Создание нового задания");
+
+	tmp_menu.push_back_advanced_cin("Название: ");
+	tmp_menu.set_advanced_cin_new_allowed_chars(0, "йцукенгшщзхъфывапролджэячсмитьбю.ЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮqwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890()[] ");
+	tmp_menu.set_advanced_cin_max_input_length(0, 30);
+
+	tmp_menu.push_back_advanced_cin("Краткое описание: ");
+	tmp_menu.set_advanced_cin_new_allowed_chars(1, "йцукенгшщзхъфывапролджэячсмитьбю.ЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮqwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890()[] ");
+	tmp_menu.set_advanced_cin_max_input_length(1, 60);
+
+	tmp_menu.push_back_butt("Вставить input файл");
+	tmp_menu.set_notification(2, "(Файл не выбран!)");
+	tmp_menu.set_color(2, CYAN_COLOR);
+
+	tmp_menu.push_back_butt("Вставить output файл");
+	tmp_menu.set_notification(3, "(Файл не выбран!)");
+	tmp_menu.set_color(3, CYAN_COLOR);
+
+	tmp_menu.push_back_butt("Создать");
+	tmp_menu.set_notification_color(4, RED_COLOR);
+
+	tmp_menu.push_back_butt("Назад");
+
+	// дальше тело
+
+	while (true) {
+		switch (tmp_menu.easy_run())
+		{
+		case 2:	// выбрать input файл
+			{
+				std::string tmp_str = WstrToStr(OpenFileDialog());
+				if (tmp_str.empty() == false) {
+					std::ifstream file(tmp_str);
+					
+					if (file.is_open() == false) {
+						tmp_menu.set_notification(2, "Не удалось открыть выбранный файл!");
+						tmp_menu.set_notification_color(2, RED_COLOR);
+					}
+					else {
+						std::ostringstream buffer;
+						buffer << file.rdbuf(); // считывает весь поток
+
+						input_file.clear();
+						input_file = buffer.str();
+
+						tmp_menu.set_notification(2, tmp_str + " -> " + std::to_string(input_file.length()) + " байтов");
+						tmp_menu.set_notification_color(2, GREEN_COLOR);
+
+						file.close();
+					}
+				}
+			}
+			break;
+		case 3:	// выбрать output файл
+			{
+				std::string tmp_str = WstrToStr(OpenFileDialog());
+				if (tmp_str.empty() == false) {
+					std::ifstream file(tmp_str);
+
+					if (file.is_open() == false) {
+						tmp_menu.set_notification(3, "Не удалось открыть выбранный файл!");
+						tmp_menu.set_notification_color(3, RED_COLOR);
+					}
+					else {
+						std::ostringstream buffer;
+						buffer << file.rdbuf(); // считывает весь поток
+
+						output_file.clear();
+						output_file = buffer.str();
+
+						tmp_menu.set_notification(3, tmp_str + " -> " + std::to_string(output_file.length()) + " байтов");
+						tmp_menu.set_notification_color(3, GREEN_COLOR);
+
+						file.close();
+					}
+				}
+			}
+			break;
+		case 4:	// создать
+			if (tmp_menu.is_all_advanced_cin_correct() == false) {
+				tmp_menu.set_notification(4, "(Исправьте все ошибки ввода!)");
+				break;
+			}
+
+			if (tmp_menu.get_advanced_cin_input(0).length() < 4) {
+				tmp_menu.set_notification(4, "(Минимальная длина названия - 3 символа!)");
+				break;
+			}
+
+			if (tmp_menu.get_advanced_cin_input(1).length() < 4) {
+				tmp_menu.set_notification(4, "(Минимальная длина описания - 3 символа!)");
+				break;
+			}
+
+			if (input_file.empty()) {
+				tmp_menu.set_notification(4, "(Файл input должен быть выбран и не быть пустым!)");
+				break;
+			}
+
+			if (output_file.empty()) {
+				tmp_menu.set_notification(4, "(Файл output должен быть выбран и не быть пустым!)");
+				break;
+			}
+
+			{
+				std::vector<char> tmp_data;
+				std::string tmp_name = tmp_menu.get_advanced_cin_input(0);
+				std::string tmp_info = tmp_menu.get_advanced_cin_input(1);
+				
+				CreateNewTaskMessage(tmp_name, tmp_info, input_file, output_file, tmp_data);
+
+				if (SendTo(client_data, tmp_data) == false) {
+					tmp_menu.set_notification(4, "(Ошибка отправки запроса!)");
+					break;
+				}
+				return true;	// запрос успешно отправлен
+			}
+			break;
+		case 5:	// выход
+			return false;
+			break;
+		}
+	}
 }
 
 bool SendTo(Client_data& client_data, const std::vector<char>& data) {
@@ -665,4 +834,92 @@ void CreateAuthorisationMessage(const std::string& login, const std::string& pas
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 
 	vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
+void CreateNewTaskMessage(const std::string& name, const std::string& info, const std::string& input, const std::string& output, std::vector<char>& vect) {
+	// временные переменные 
+	uint32_t uint32_t_buffer;
+	unsigned char uchar_buffer;
+	char* tmp_ptr;
+
+	std::vector<char> main_data;
+
+	// запись основной инфы
+	uint32_t_buffer = name.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), name.begin(), name.end());
+
+	uint32_t_buffer = info.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), info.begin(), info.end());
+
+	uint32_t_buffer = input.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), input.begin(), input.end());
+
+	uint32_t_buffer = output.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), output.begin(), output.end());
+
+	// дальше совмещение
+	vect.clear();
+
+	uchar_buffer = FROM_CLIENT;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = CREATE_NEW_TASK;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 0;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = main_data.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
+//перифирия-------------------------------------------------------
+std::string WstrToStr(const std::wstring& wstr)
+{
+	if (wstr.empty()) return "";
+	int size_needed = WideCharToMultiByte(1251, 0, wstr.c_str(), -1, nullptr, 0, nullptr, nullptr);
+	std::string str(size_needed - 1, 0);
+	WideCharToMultiByte(1251, 0, wstr.c_str(), -1, &str[0], size_needed, nullptr, nullptr);
+	return str;
+}
+
+std::wstring OpenFileDialog()
+{
+	OPENFILENAMEW ofn;
+	WCHAR szFile[260] = { 0 };
+
+	ZeroMemory(&ofn, sizeof(ofn));
+	ofn.lStructSize = sizeof(ofn);
+	ofn.hwndOwner = nullptr;
+	ofn.lpstrFile = szFile;
+	ofn.nMaxFile = sizeof(szFile);
+	ofn.lpstrFilter = L"Text Files\0*.txt\0All Files\0*.*\0";
+	ofn.nFilterIndex = 1;
+	ofn.lpstrFileTitle = nullptr;
+	ofn.nMaxFileTitle = 0;
+	ofn.lpstrInitialDir = nullptr;
+	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+	if (GetOpenFileNameW(&ofn))
+		return std::wstring(ofn.lpstrFile);
+
+	return L"";
 }

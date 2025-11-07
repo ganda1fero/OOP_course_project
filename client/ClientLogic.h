@@ -14,6 +14,13 @@
 #include <thread>
 #include <functional>
 #include <mutex>
+#include <string>
+#include <sstream>
+#include <commdlg.h>
+#pragma comment(lib, "comdlg32.lib")
+
+#include <locale>
+#include <codecvt>
 
 #include "EasyMenu.h"
 
@@ -86,15 +93,24 @@ bool AccessDenied(const MsgHead& msg_header, const std::vector<char>& recv_buffe
 
 bool AuthorisationAsTeacher(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
 
+bool ConfirmCreateTask(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
+
 // менюшки
 void AuthorisationMenu(Client_data& client_data, std::string text);
 
 void TeacherMenu(Client_data& client_data, std::string text);
+bool TeacherCreateNewTask(Client_data& client_data);
 
 // запросы
 bool SendTo(Client_data& client_data, const std::vector<char>& data);
 
 void CreateAuthorisationMessage(const std::string& login, const std::string& password, std::vector<char>& vect);
+
+void CreateNewTaskMessage(const std::string& input, const std::string& output, const std::string& name, const std::string& info, std::vector<char>& vect);
+
+// перефирия
+std::string WstrToStr(const std::wstring& wstr);
+std::wstring OpenFileDialog();
 
 
 #endif
