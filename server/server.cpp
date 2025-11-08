@@ -1,83 +1,64 @@
-﻿#define SERVER_LOCAL_MODE true
-#define _WINSOCK_DEPRECATED_NO_WARNINGS
-
-#include <iostream>
+﻿#include <iostream>
+#include <string>
+#include <chrono>
 
 #include <WinSock2.h>
-#pragma comment(lib, "ws2_32.lib") // доподключаем реализацию библиотеку WSA
+#include <ws2tcpip.h>
+#include <Windows.h>
 
-#include <thread>
-#include <mutex>
-
+#include "ServerLogic.h"
 #include "EasyMenu.h"
 #include "EasyLogs.h"
+#include "ServerMenues.h"
 
-
-
-
-bool SetupServer(SOCKET& door_sock);
+//---------------------------------------------------------- main
 
 int main() {
-	EasyLogs test("test");
-	if (test.is_open() == false)
-		test.create("test");
-	test.insert(EL_NETWORK, "привет");
+	// инициализация
+	EasyLogs logs("serv");
+	if (logs.is_open() == false) {
+		logs.create("serv");
+		logs.insert(EL_SYSTEM, EL_ERROR, "Ошибка открытия логов (binary), создан новый");
+	}
 
-	EasyLogs test_2;
+	SOCKET door_sock;
 
-	std::vector<char> data;
+	if (SetupServer(door_sock, logs) == false) {
+		logs.insert(EL_SYSTEM, EL_ERROR, "Неудачный запуск сервера, сервер закрыт");
+		logs.save();
+		std::cout << "Неудачный запуск сервера, сервер закрыт";
 
-	test.select_all(EL_SYSTEM, data);
+		return 0;
+	}
 
-	test_2.open_via_char(data);
+	time_t start_time_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
 
-	test_2.print_all();
-	return 0;
-}
+	// (сокет сервера запущен и поставлен в прослушку)
+	logs.insert(EL_SYSTEM, EL_NETWORK, "Сервер успешно запущен");
 
-//----------------------------------------------------------
+	ServerData server;
+	server.ReadFromFile();
 
-bool SetupServer(SOCKET& door_sock) {
-	WORD wVersionRequested;
-	WSADATA wsaData;
-	wVersionRequested = MAKEWORD(2, 2);
-	if (WSAStartup(wVersionRequested, &wsaData) == WSASYSNOTREADY) {
-		// ошибка запуска WSA
-
-		return false;	// выход
-	}	// WSA запущен
-
-	if (door_sock = socket(AF_INET, SOCK_STREAM, 0) == INVALID_SOCKET) {
-		// Ошибка открытия сокета
-
-		WSACleanup();
-
-		return false;	// выход
-	}	// Сокет открыт
-
-	sockaddr_in door_adress;
-	door_adress.sin_family = AF_INET;
-	door_adress.sin_port = htons(60888); // задаем порт сервера
-	if (SERVER_LOCAL_MODE == true)
-		door_adress.sin_addr.s_addr = inet_addr("127.0.0.1"); // задает IP сервера
-	else
-		door_adress.sin_addr.s_addr = htonl(ADDR_ANY);
+	logs.insert(EL_SYSTEM, "Найдено аккаунтов: " + std::to_string(server.get_all_account_notes().size()));
+	logs.insert(EL_SYSTEM, "Найдено заданий: " + std::to_string(server.get_count_of_all_tasks()));
 	
-	if (bind(door_sock, (sockaddr*)&door_adress, sizeof(door_adress)) == SOCKET_ERROR) { // привязка сокета к IP:порту
-		// не удалось привязать адресс к сокету
+	std::thread door_thread(ServerMain, std::ref(door_sock), std::ref(logs), std::ref(server));	// открыли поток
+	
+	ServerMenu(server, logs);	// выполняем логику меню
 
-		WSACleanup();
+	// закрытие всего
+	server.set_state(-1);// дали команду закрыть сервер
 
-		return false;	// выход
-	}	// адресс привязан к сокету
+	door_thread.join();	// ждем завершения потока двери
 
-	if (listen(door_sock, 10) == SOCKET_ERROR) {
-		// не уадлось поставить сокет в прослушку
+	server.SaveToFile();
 
-		WSACleanup();
+	WSACleanup();
 
-		return false;	// выход
-	}	// поставили сокет режим слушания
+	time_t duration_t = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now()) - start_time_t;
+	std::string duration_str{ std::to_string(duration_t / 3600) + "ч " + std::to_string((duration_t / 60) % 60) + "мин" };
 
-	return true;
+	logs.insert(EL_SYSTEM, EL_NETWORK, "Сервер закрыт, время работы: " + duration_str);
+	std::cout << "сервер закрыт";
+	logs.save();
 }
