@@ -8,6 +8,7 @@
 #define AUTHORISATION 2
 #define CREATE_NEW_TASK 22
 #define GET_ALL_TASKS 33
+#define GET_TASK_INFO 101
 
 // методы классов
 
@@ -280,7 +281,43 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 				TeacherMenu(client_data, "");
 			}
 			else {	// выбрано какое-то задание
+				{
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+					client_data.menu_.set_notification(pressed_but, "(В обработке...)");
+					client_data.menu_.advanced_clear_console();
+					client_data.menu_.advanced_display_menu();
+				}
+				
+				std::vector<char> tmp_data;
+				CreateGetTaskInfo(tmp_data, pressed_but);
+				SendTo(client_data, tmp_data);
+			}
+			break;
+		case 3:	// меню выбранного задания 
+			switch (pressed_but)
+			{
+			case 0:	// просмотр заданий
 
+				break;
+			case 1:	// редактирование
+
+				break;
+			case 2:	// удалить
+
+				break;
+			case 3:	// назад
+				{
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+					client_data.menu_.set_notification(6, "(В обработке...)");
+					client_data.menu_.advanced_clear_console();
+					client_data.menu_.advanced_display_menu();
+				}
+				{
+					std::vector<char> tmp_data;
+					CreateGetAllTasksMessage(tmp_data);
+					SendTo(client_data, tmp_data) == false;
+				}
+				break;
 			}
 			break;
 		}
@@ -520,6 +557,20 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 			break;
 		}
 		break;
+	case GET_TASK_INFO:
+		switch (msg_header.third_code)
+		{
+		case 1: // для студентов
+
+			break;
+		case 2:	// для преподов
+			return GetTaskInfoForTeacher(msg_header, recv_buffer, client_data);
+			break;
+		default:
+			return false;
+			break;
+		}
+		break;
 	default:
 		return false;	// неизвестная команда
 		break;
@@ -625,6 +676,44 @@ bool GetAllTasksForTeacher(const MsgHead& msg_header, const std::vector<char>& r
 	}
 
 	TeacherAlltasks(client_data, tmp_data);
+
+	return true;
+}
+
+bool GetTaskInfoForTeacher(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+
+	std::string tmp_name, tmp_info;
+	uint32_t tmp_count_of_complited, tmp_butt_index;
+
+	uint32_t index = msg_header.size_of();
+	try {
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		tmp_name.insert(tmp_name.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		index += uint32_t_buffer;
+		
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		tmp_info.insert(tmp_info.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		index += uint32_t_buffer;
+
+		tmp_count_of_complited = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		tmp_butt_index = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+	}
+	catch (...) {
+		return false;
+	}
+
+	// значит все удачно прочитали 
+
+	TeacherTaskInfo(client_data, tmp_name, tmp_info, tmp_count_of_complited, tmp_butt_index);
 
 	return true;
 }
@@ -847,6 +936,35 @@ void TeacherAlltasks(Client_data& client_data, std::vector<std::string> buttons)
 	client_data.screen_info_.role = TEACHER_ROLE;
 }
 
+void TeacherTaskInfo(Client_data& client_data, const std::string& name, const std::string& info, const uint32_t& count_of_completes, const uint32_t& butt_index) {
+	std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+	client_data.menu_.clear();
+
+	client_data.menu_.set_info("Просмотр задания");
+	client_data.menu_.set_info_main_color(LIGHT_YELLOW_COLOR);
+
+	client_data.menu_.push_back_text("Название: " + name);
+
+	client_data.menu_.push_back_text("Описание: " + info);
+
+	client_data.menu_.push_back_text("Студентов, сдавших работы: " + std::to_string(count_of_completes));
+
+	client_data.menu_.push_back_butt("Просмотр решений");
+
+	client_data.menu_.push_back_butt("Редактирование");
+
+	client_data.menu_.push_back_butt("Удалить");
+
+	client_data.menu_.push_back_butt("Назад");
+
+	std::lock_guard<std::mutex> lock2(client_data.screen_info_mutex);
+
+	client_data.screen_info_.type = 3;
+	client_data.screen_info_.id = butt_index;
+	client_data.screen_info_.role = TEACHER_ROLE;
+}
+
 bool SendTo(Client_data& client_data, const std::vector<char>& data) {
 	uint32_t sended_count{ 0 };
 
@@ -1003,6 +1121,35 @@ void CreateNewTaskMessage(const std::string& name, const std::string& info, cons
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 
 	vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
+void CreateGetTaskInfo(std::vector<char>& vect, const uint32_t& butt_index) {
+	// временные перменные
+	uint32_t uint32_t_buffer;
+	unsigned char uchar_buffer;
+	char* tmp_ptr;
+
+	vect.clear();
+
+	uchar_buffer = FROM_CLIENT;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = GET_TASK_INFO;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 0;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = sizeof(uint32_t);	// вес полезной инфы
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = butt_index;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 }
 
 //перифирия-------------------------------------------------------

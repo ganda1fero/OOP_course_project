@@ -171,12 +171,16 @@ void CreateAuthorisationTeaherMessage(std::vector<char>& vect, serv_connection* 
 
 void CreateConfirmCreateTaskMessage(std::vector<char>& vect, serv_connection* connection_ptr);
 
-void CreateGetAllTasksForTeacherMessage(std::vector<char>& vect, serv_connection* connection_ptr, ServerData& server);
+void CreateGetAllTasksForTeacherMessage(std::vector<char>& vect, ServerData& server);
+//void CreateGetAllTasksForUserMessage(std::vector<char>& vect, serv_connection* connection_ptr, ServerData& server);
+
+void CreateGetTaskInfoForTeacherMessage(std::vector<char>& vect, uint32_t butt_index, ServerData& server);
 
 
 //------------------(Функции чтения message)
 bool ProcessAuthorisationMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessCreateNewTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessGetAllTasksMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessGetTaskInfoMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 
 #endif

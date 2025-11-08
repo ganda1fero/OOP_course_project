@@ -97,12 +97,15 @@ bool ConfirmCreateTask(const MsgHead& msg_header, const std::vector<char>& recv_
 
 bool GetAllTasksForTeacher(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
 
+bool GetTaskInfoForTeacher(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
+
 // менюшки
 void AuthorisationMenu(Client_data& client_data, std::string text);
 
 void TeacherMenu(Client_data& client_data, std::string text);
 bool TeacherCreateNewTask(Client_data& client_data);
 void TeacherAlltasks(Client_data& client_data, std::vector<std::string> buttons);
+void TeacherTaskInfo(Client_data& client_data, const std::string& name, const std::string& info, const uint32_t& count_of_completes, const uint32_t& butt_index);
 
 
 // запросы
@@ -113,6 +116,8 @@ void CreateGetAllTasksMessage(std::vector<char>& vect);
 void CreateAuthorisationMessage(const std::string& login, const std::string& password, std::vector<char>& vect);
 
 void CreateNewTaskMessage(const std::string& input, const std::string& output, const std::string& name, const std::string& info, std::vector<char>& vect);
+
+void CreateGetTaskInfo(std::vector<char>& vect, const uint32_t& butt_index);
 
 // перефирия
 std::string WstrToStr(const std::wstring& wstr);
