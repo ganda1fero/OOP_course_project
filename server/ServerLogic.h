@@ -1,7 +1,7 @@
 #ifndef SERVERLOGIC_H
 #define SERVERLOGIC_H
 
-#define SERVER_LOCAL_MODE true
+#define SERVER_LOCAL_MODE false
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 
 #define BANNED_ROLE 0
@@ -62,9 +62,11 @@ struct cheacks
 
 struct id_cheack
 {
+	std::mutex account_id_cheak_mutex;
+
 	uint32_t account_id{ 0 };	// id аккаунта
 	
-	std::vector<cheacks> all_tryes;	// все его попытки
+	std::vector<cheacks*> all_tryes;	// все его попытки
 };
 
 
@@ -76,7 +78,7 @@ struct task_note {
 	std::string input_file{ "" };	// значения input
 	std::string output_file{ "" };	// значениея output
 
-	std::vector<id_cheack> checked_accounts;	// все аккаунты и их попытки
+	std::vector<id_cheack*> checked_accounts;	// все аккаунты и их попытки
 };
 
 //////////////////////////////////////////
@@ -124,6 +126,11 @@ public:
 	uint32_t get_count_of_all_tasks();
 	void create_new_task(const std::string& name, const std::string& info, const std::string& input, const std::string& output);
 
+	std::mutex tasks_mutex;
+	std::vector<task_note*> all_tasks;
+	void __clear_all_tasks__();
+	bool __read_from_file_all_tasks__();
+	void __save_to_file_all_tasks__();
 
 private:
 	// поля
@@ -139,12 +146,6 @@ private:
 	bool __read_from_file_accounts__();
 	void __save_to_file_accounts__();
 	void __sort_accounts__();
-
-	std::mutex tasks_mutex;
-	std::vector<task_note*> all_tasks;
-	void __clear_all_tasks__();
-	bool __read_from_file_all_tasks__();
-	void __save_to_file_all_tasks__();
 
 	// методы
 
@@ -170,9 +171,12 @@ void CreateAuthorisationTeaherMessage(std::vector<char>& vect, serv_connection* 
 
 void CreateConfirmCreateTaskMessage(std::vector<char>& vect, serv_connection* connection_ptr);
 
+void CreateGetAllTasksForTeacherMessage(std::vector<char>& vect, serv_connection* connection_ptr, ServerData& server);
+
 
 //------------------(Функции чтения message)
 bool ProcessAuthorisationMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessCreateNewTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessGetAllTasksMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 
 #endif

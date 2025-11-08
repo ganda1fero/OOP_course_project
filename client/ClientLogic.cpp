@@ -7,6 +7,7 @@
 #define ACCESS_DENIED 66
 #define AUTHORISATION 2
 #define CREATE_NEW_TASK 22
+#define GET_ALL_TASKS 33
 
 // методы классов
 
@@ -232,11 +233,21 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 		break;
 	case TEACHER_ROLE:
 		switch (client_data.screen_info_.type) {
-		case 1:
+		case 1:	// начальное меню 
 			switch (pressed_but)
 			{
 			case 0:	// урп заданиями 
-
+				{
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+					client_data.menu_.set_notification(0, "(В обработке...)");
+					client_data.menu_.advanced_clear_console();
+					client_data.menu_.advanced_display_menu();
+				}
+				{
+					std::vector<char> tmp_data;
+					CreateGetAllTasksMessage(tmp_data);
+					SendTo(client_data, tmp_data);
+				}
 				break;
 			case 1:	// создать новое задание
 				{
@@ -262,6 +273,14 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 				}
 
 				break;
+			}
+			break;
+		case 2:	// выбор задания
+			if (pressed_but == client_data.menu_.get_count_of_buttons() - 1) { // значит нажат выход
+				TeacherMenu(client_data, "");
+			}
+			else {	// выбрано какое-то задание
+
 			}
 			break;
 		}
@@ -487,6 +506,20 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 	case CREATE_NEW_TASK:
 		return ConfirmCreateTask(msg_header, recv_buffer, client_data);
 		break;
+	case GET_ALL_TASKS:
+		switch (msg_header.third_code)
+		{
+		case 1:	// для студента
+
+			break;
+		case 2:	// для препода
+			return GetAllTasksForTeacher(msg_header, recv_buffer, client_data);
+			break;
+		default:
+			return false;
+			break;
+		}
+		break;
 	default:
 		return false;	// неизвестная команда
 		break;
@@ -566,6 +599,36 @@ bool ConfirmCreateTask(const MsgHead& msg_header, const std::vector<char>& recv_
 	return true;
 }
 
+bool GetAllTasksForTeacher(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data) {
+	// временные переменные
+	std::vector<std::string> tmp_data;
+
+	uint32_t uint32_t_buffer;
+
+	uint32_t index = msg_header.size_of();
+	try {
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		tmp_data.resize(uint32_t_buffer);
+
+		for (uint32_t i{ 0 }; i < tmp_data.size(); i++) {
+			uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+			index += sizeof(uint32_t);
+
+			tmp_data[i].insert(tmp_data[i].end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+			index += uint32_t_buffer;
+		}
+	}
+	catch (...) {
+		return false;
+	}
+
+	TeacherAlltasks(client_data, tmp_data);
+
+	return true;
+}
+
 void AuthorisationMenu(Client_data& client_data, std::string text) {
 	std::lock_guard<std::mutex> lock(client_data.menu_mutex);
 
@@ -608,7 +671,10 @@ void TeacherMenu(Client_data& client_data, std::string text) {
 
 	client_data.menu_.clear();
 
-	client_data.menu_.set_info("Здравствуйте, " + text);
+	if (text.empty() == false)
+		client_data.menu_.set_info("Здравствуйте, " + text);
+	else
+		client_data.menu_.set_info("Меню преподавателя");
 	client_data.menu_.set_info_main_color(LIGHT_YELLOW_COLOR);
 
 	client_data.menu_.push_back_butt("Упр заданиями");
@@ -757,6 +823,30 @@ bool TeacherCreateNewTask(Client_data& client_data){
 	}
 }
 
+void TeacherAlltasks(Client_data& client_data, std::vector<std::string> buttons) {
+	std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+	client_data.menu_.clear();
+
+	client_data.menu_.set_info("Выбор задания");
+	client_data.menu_.set_info_main_color(LIGHT_YELLOW_COLOR);
+
+	for (uint32_t i{ 0 }; i < buttons.size(); i++)
+		client_data.menu_.push_back_butt(buttons[i]);
+
+	client_data.menu_.push_back_butt("Нахад");
+	client_data.menu_.set_color(buttons.size(), BLUE_COLOR);
+
+	client_data.menu_.advanced_clear_console();
+	client_data.menu_.advanced_display_menu();
+
+	std::lock_guard<std::mutex> lock2(client_data.screen_info_mutex);
+
+	client_data.screen_info_.type = 2;
+	client_data.screen_info_.id = 0;
+	client_data.screen_info_.role = TEACHER_ROLE;
+}
+
 bool SendTo(Client_data& client_data, const std::vector<char>& data) {
 	uint32_t sended_count{ 0 };
 
@@ -792,6 +882,30 @@ bool SendTo(Client_data& client_data, const std::vector<char>& data) {
 	}
 
 	return true;	// отправка успешно завершилась
+}
+
+void CreateGetAllTasksMessage(std::vector<char>& vect) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+	unsigned char uchar_buffer;
+	char* tmp_ptr{ nullptr };
+
+	vect.clear();
+
+	uchar_buffer = FROM_CLIENT;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = GET_ALL_TASKS;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 0;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 }
 
 void CreateAuthorisationMessage(const std::string& login, const std::string& password, std::vector<char>& vect) {

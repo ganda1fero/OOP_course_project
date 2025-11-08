@@ -1,7 +1,7 @@
 #ifndef CLIENTLOGIC_H
 #define CLIENTLOGIC_H
 
-#define SERVER_LOCAL_MODE true
+#define SERVER_LOCAL_MODE false
 #define _WINSOCK_DEPRECATED_NO_WARNINGS
 
 #include <iostream>
@@ -95,14 +95,20 @@ bool AuthorisationAsTeacher(const MsgHead& msg_header, const std::vector<char>& 
 
 bool ConfirmCreateTask(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
 
+bool GetAllTasksForTeacher(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
+
 // менюшки
 void AuthorisationMenu(Client_data& client_data, std::string text);
 
 void TeacherMenu(Client_data& client_data, std::string text);
 bool TeacherCreateNewTask(Client_data& client_data);
+void TeacherAlltasks(Client_data& client_data, std::vector<std::string> buttons);
+
 
 // запросы
 bool SendTo(Client_data& client_data, const std::vector<char>& data);
+
+void CreateGetAllTasksMessage(std::vector<char>& vect);
 
 void CreateAuthorisationMessage(const std::string& login, const std::string& password, std::vector<char>& vect);
 

@@ -98,6 +98,8 @@ public:
     void set_advanced_cin_secure_input_on(int32_t index);
     void set_advanced_cin_secure_input_off(int32_t index);
 
+    int get_count_of_buttons();
+
     int32_t get_color(int32_t index);
     bool get_mark_choose_status();
     bool get_pointer_status();

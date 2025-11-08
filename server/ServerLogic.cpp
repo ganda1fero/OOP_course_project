@@ -5,6 +5,7 @@
 #define ACCESS_DENIED 66
 #define AUTHORISATION 2
 #define CREATE_NEW_TASK 22
+#define GET_ALL_TASKS 33
 
 #include "ServerLogic.h"
 
@@ -435,6 +436,58 @@ void CreateConfirmCreateTaskMessage(std::vector<char>& vect, serv_connection* co
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t_buffer));
 }
 
+void CreateGetAllTasksForTeacherMessage(std::vector<char>& vect, serv_connection* connection_ptr, ServerData& server) {
+	// временные переменные
+	std::vector<task_note> tmp_all_tasks;
+
+	uint32_t uint32_t_buffer;
+	unsigned char uchar_buffer;
+	char* tmp_ptr;
+
+	{
+		std::lock_guard<std::mutex> lock(server.tasks_mutex);
+		tmp_all_tasks.resize(server.all_tasks.size());
+
+		for (uint32_t i{ 0 }; i < tmp_all_tasks.size(); i++)
+			tmp_all_tasks[i] = *server.all_tasks[i];
+	}	// перенесли в буфер
+
+	std::vector<char> main_data;
+
+	uint32_t_buffer = tmp_all_tasks.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	for (uint32_t i{ 0 }; i < tmp_all_tasks.size(); i++) {
+		uint32_t_buffer = tmp_all_tasks[i].task_name.length();
+		tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+		main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t_buffer));
+
+		main_data.insert(main_data.end(), &tmp_all_tasks[i].task_name[0], &tmp_all_tasks[i].task_name[0] + tmp_all_tasks[i].task_name.size());
+	}
+
+	// закончили с main_data
+	vect.clear();
+
+	uchar_buffer = FROM_SERVER;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = GET_ALL_TASKS;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 2;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = main_data.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
 bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
 	if (msg_header.first_code != FROM_CLIENT) {
 		std::string tmp_str{ "ќшибка первичного кода сообщени€ от " };
@@ -456,6 +509,9 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 		break;
 	case CREATE_NEW_TASK:
 		return ProcessCreateNewTaskMessage(msg_header, recv_buffer, connection_ptr, server, logs);
+		break;
+	case GET_ALL_TASKS:
+		return ProcessGetAllTasksMessage(msg_header, recv_buffer, connection_ptr, server, logs);
 		break;
 	default:	// заглушка дл€ неизвестных
 		std::string tmp_str{ "Ќеизвестный вторичный код сообщени€ от " };
@@ -599,6 +655,31 @@ bool ProcessCreateNewTaskMessage(const MsgHead& msg_header, const std::vector<ch
 	CreateConfirmCreateTaskMessage(tmp_data, connection_ptr);
 
 	return SendTo(connection_ptr, tmp_data, logs);
+}
+
+bool ProcessGetAllTasksMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
+	// временные переменные
+	std::vector<char> tmp_data;
+
+	if (connection_ptr->account_ptr == nullptr) {
+		logs.insert(EL_ERROR, EL_NETWORK, EL_ACTION, "ѕользователь " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + " не авторизован дл€ команды, закрыва€ соединение");
+		return false;
+	}
+
+	if (connection_ptr->account_ptr->role == USER_ROLE) { // дл€ юзера
+		
+	}
+	else if (connection_ptr->account_ptr->role == TEACHER_ROLE) {	// дл€ препода
+		CreateGetAllTasksForTeacherMessage(tmp_data, connection_ptr, server);
+
+		logs.insert(EL_ACTION, "пользователь " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + '(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')' + " зашел в выбор заданий");
+
+		return SendTo(connection_ptr, tmp_data, logs);
+	}
+	else {	// значит вышли за пределы роли
+		logs.insert(EL_ERROR, EL_ACTION, EL_NETWORK, "ѕользователь " + (std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr))) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')));
+		return false;
+	}
 }
 
 //---------------------------------------------------------- методы классов
@@ -1004,9 +1085,23 @@ void ServerData::__sort_accounts__() {
 void ServerData::__clear_all_tasks__() {
 	std::lock_guard<std::mutex> lock(tasks_mutex);
 
-	for (uint32_t i{ 0 }; i < all_tasks.size(); i++)
-		if (all_tasks[i] != nullptr)
+	for (uint32_t i{ 0 }; i < all_tasks.size(); i++) {
+		if (all_tasks[i] != nullptr) {
+			for (uint32_t g{ 0 }; g < all_tasks[i]->checked_accounts.size(); g++) {
+				if (all_tasks[i]->checked_accounts[g] != nullptr) {
+					for (uint32_t h{ 0 }; h < all_tasks[i]->checked_accounts[g]->all_tryes.size(); h++) {
+						if (all_tasks[i]->checked_accounts[g]->all_tryes[h] != nullptr) {
+							delete all_tasks[i]->checked_accounts[g]->all_tryes[h];
+						}
+					}
+
+					delete all_tasks[i]->checked_accounts[g];
+				}
+			}
+
 			delete all_tasks[i];
+		}
+	}
 
 	all_tasks.clear();
 }
@@ -1055,26 +1150,30 @@ bool ServerData::__read_from_file_all_tasks__() {
 			tmp_all_tasks[i]->checked_accounts.resize(uint32_t_buffer);
 
 			for (uint32_t g{ 0 }; g < tmp_all_tasks[i]->checked_accounts.size(); g++) {
-				file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->checked_accounts[g].account_id), sizeof(uint32_t));
+				tmp_all_tasks[i]->checked_accounts[g] = new id_cheack;
+
+				file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->checked_accounts[g]->account_id), sizeof(uint32_t));
 
 				file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
-				tmp_all_tasks[i]->checked_accounts[g].all_tryes.resize(uint32_t_buffer);
+				tmp_all_tasks[i]->checked_accounts[g]->all_tryes.resize(uint32_t_buffer);
 
-				for (uint32_t h{ 0 }; h < tmp_all_tasks[i]->checked_accounts[g].all_tryes.size(); h++) {
-					file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->checked_accounts[g].all_tryes[h].is_good), sizeof(bool));
+				for (uint32_t h{ 0 }; h < tmp_all_tasks[i]->checked_accounts[g]->all_tryes.size(); h++) {
+					tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h] = new cheacks;
+
+					file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->is_good), sizeof(bool));
 					
 					file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
-					tmp_all_tasks[i]->checked_accounts[g].all_tryes[h].info.resize(uint32_t_buffer);
+					tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->info.resize(uint32_t_buffer);
 
-					file.read(&tmp_all_tasks[i]->checked_accounts[g].all_tryes[g].info[0], tmp_all_tasks[i]->checked_accounts[g].all_tryes[g].info.size());
+					file.read(&tmp_all_tasks[i]->checked_accounts[g]->all_tryes[g]->info[0], tmp_all_tasks[i]->checked_accounts[g]->all_tryes[g]->info.size());
 
 					file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
-					tmp_all_tasks[i]->checked_accounts[g].all_tryes[h].cpp_file.resize(uint32_t_buffer);
+					tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->cpp_file.resize(uint32_t_buffer);
 
-					file.read(&tmp_all_tasks[i]->checked_accounts[g].all_tryes[h].cpp_file[0], tmp_all_tasks[i]->checked_accounts[g].all_tryes[h].cpp_file.size());
+					file.read(&tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->cpp_file[0], tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->cpp_file.size());
 
-					file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->checked_accounts[g].all_tryes[h].memory_bytes), sizeof(uint32_t));
-					file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->checked_accounts[g].all_tryes[h].cpu_time_ms), sizeof(uint32_t));
+					file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->memory_bytes), sizeof(uint32_t));
+					file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->cpu_time_ms), sizeof(uint32_t));
 				}
 			}
 		}
@@ -1148,30 +1247,30 @@ void ServerData::__save_to_file_all_tasks__() {
 		file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
 
 		for (uint32_t g{ 0 }; g < tmp_all_tasks[i]->checked_accounts.size(); g++) {
-			uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g].account_id;
+			uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g]->account_id;
 			file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
 
-			uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g].all_tryes.size();
+			uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g]->all_tryes.size();
 			file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
 
-			for (uint32_t h{ 0 }; h < tmp_all_tasks[i]->checked_accounts[g].all_tryes.size(); h++) {
-				bool_buffer = tmp_all_tasks[i]->checked_accounts[g].all_tryes[h].is_good;
+			for (uint32_t h{ 0 }; h < tmp_all_tasks[i]->checked_accounts[g]->all_tryes.size(); h++) {
+				bool_buffer = tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->is_good;
 				file.write(reinterpret_cast<char*>(&bool_buffer), sizeof(bool));
 
-				uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g].all_tryes[h].info.length();
+				uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->info.length();
 				file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
 
-				file.write(&tmp_all_tasks[i]->checked_accounts[g].all_tryes[h].info[0], tmp_all_tasks[i]->checked_accounts[g].all_tryes[h].info.size());
+				file.write(&tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->info[0], tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->info.size());
 
-				uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g].all_tryes[h].cpp_file.length();
+				uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->cpp_file.length();
 				file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
 
-				file.write(&tmp_all_tasks[i]->checked_accounts[g].all_tryes[h].cpp_file[0], tmp_all_tasks[i]->checked_accounts[g].all_tryes[h].cpp_file.size());
+				file.write(&tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->cpp_file[0], tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->cpp_file.size());
 
-				uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g].all_tryes[h].memory_bytes;
+				uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->memory_bytes;
 				file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
 
-				uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g].all_tryes[h].cpu_time_ms;
+				uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->cpu_time_ms;
 				file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
 			}
 		}

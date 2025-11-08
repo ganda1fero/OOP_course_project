@@ -594,6 +594,10 @@ void EasyMenu::set_notification_color(int32_t index, int32_t color_id) {
     return;
 }
 
+int EasyMenu::get_count_of_buttons() {
+    return count_of_buttons_;
+}
+
 int32_t EasyMenu::get_color(int32_t index) {
     if (index < 0 || index > count_of_lines_ - 1)
         return -1;
