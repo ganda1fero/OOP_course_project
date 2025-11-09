@@ -99,6 +99,9 @@ bool GetAllTasksForTeacher(const MsgHead& msg_header, const std::vector<char>& r
 
 bool GetTaskInfoForTeacher(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
 
+bool GetInputFile(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
+bool GetOutputFile(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
+
 // менюшки
 void AuthorisationMenu(Client_data& client_data, std::string text);
 
@@ -106,6 +109,7 @@ void TeacherMenu(Client_data& client_data, std::string text);
 bool TeacherCreateNewTask(Client_data& client_data);
 void TeacherAlltasks(Client_data& client_data, std::vector<std::string> buttons);
 void TeacherTaskInfo(Client_data& client_data, const std::string& name, const std::string& info, const uint32_t& count_of_completes, const uint32_t& butt_index);
+bool TeacherDeleteConfirmMenu();
 
 
 // запросы
@@ -117,11 +121,18 @@ void CreateAuthorisationMessage(const std::string& login, const std::string& pas
 
 void CreateNewTaskMessage(const std::string& input, const std::string& output, const std::string& name, const std::string& info, std::vector<char>& vect);
 
-void CreateGetTaskInfo(std::vector<char>& vect, const uint32_t& butt_index);
+void CreateGetTaskInfoMessage(std::vector<char>& vect, const uint32_t& butt_index);
+
+void CreateDeleteTaskMessage(std::vector<char>& vect, const uint32_t& butt_index);
+
+void CreateGetIOFileShowMessage(std::vector<char>& vect, const uint32_t& butt_index, bool is_input);
 
 // перефирия
 std::string WstrToStr(const std::wstring& wstr);
 std::wstring OpenFileDialog();
+
+std::string GetAppDirectory();
+void OpenFileForUser(const std::string& file_path);
 
 
 #endif

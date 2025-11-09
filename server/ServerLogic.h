@@ -176,11 +176,16 @@ void CreateGetAllTasksForTeacherMessage(std::vector<char>& vect, ServerData& ser
 
 void CreateGetTaskInfoForTeacherMessage(std::vector<char>& vect, uint32_t butt_index, ServerData& server);
 
+void CreateGetInputFileMessage(std::vector<char>& vect, uint32_t butt_index, ServerData& server);
+void CreateGetOutputFileMessage(std::vector<char>& vect, uint32_t butt_index, ServerData& server);
+
 
 //------------------(Функции чтения message)
 bool ProcessAuthorisationMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessCreateNewTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessGetAllTasksMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessGetTaskInfoMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessDeleteTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessGetInputOutputFileMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 
 #endif

@@ -9,6 +9,8 @@
 #define CREATE_NEW_TASK 22
 #define GET_ALL_TASKS 33
 #define GET_TASK_INFO 101
+#define DELETE_TASK 44
+#define GET_IO_FILE 102
 
 // методы классов
 
@@ -241,6 +243,7 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 				{
 					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
 					client_data.menu_.set_notification(0, "(В обработке...)");
+					client_data.menu_.set_notification_color(0, YELLOW_COLOR);
 					client_data.menu_.advanced_clear_console();
 					client_data.menu_.advanced_display_menu();
 				}
@@ -254,6 +257,7 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 				{
 					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
 					client_data.menu_.set_notification(1, "(В обработке...)");
+					client_data.menu_.set_notification_color(1, YELLOW_COLOR);
 				}
 				if (TeacherCreateNewTask(client_data)) {
 					// был отправлен запрос на создание 
@@ -284,31 +288,99 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 				{
 					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
 					client_data.menu_.set_notification(pressed_but, "(В обработке...)");
+					client_data.menu_.set_notification_color(pressed_but, YELLOW_COLOR);
 					client_data.menu_.advanced_clear_console();
 					client_data.menu_.advanced_display_menu();
 				}
 				
 				std::vector<char> tmp_data;
-				CreateGetTaskInfo(tmp_data, pressed_but);
+				CreateGetTaskInfoMessage(tmp_data, pressed_but);
 				SendTo(client_data, tmp_data);
 			}
 			break;
 		case 3:	// меню выбранного задания 
 			switch (pressed_but)
 			{
-			case 0:	// просмотр заданий
-
-				break;
-			case 1:	// редактирование
-
-				break;
-			case 2:	// удалить
-
-				break;
-			case 3:	// назад
+			case 0:	// просмотр input файла
 				{
 					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
-					client_data.menu_.set_notification(6, "(В обработке...)");
+					client_data.menu_.set_notification(0, "(В обработке...)");
+					client_data.menu_.set_notification_color(0, YELLOW_COLOR);
+
+					client_data.menu_.advanced_clear_console();
+					client_data.menu_.advanced_display_menu();
+				}
+				{
+					std::vector<char> tmp_data;
+					uint32_t tmp_butt_index;
+					{
+						std::lock_guard<std::mutex> lock(client_data.screen_info_mutex);
+						tmp_butt_index = client_data.screen_info_.id;
+					}
+
+					CreateGetIOFileShowMessage(tmp_data, tmp_butt_index, true);
+					
+					SendTo(client_data, tmp_data);
+				}
+				break;
+			case 1:	// просмотр output файла
+				{
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+					client_data.menu_.set_notification(1, "(В обработке...)");
+					client_data.menu_.set_notification_color(1, YELLOW_COLOR);
+
+					client_data.menu_.advanced_clear_console();
+					client_data.menu_.advanced_display_menu();
+				}
+				{
+					std::vector<char> tmp_data;
+					uint32_t tmp_butt_index;
+					{
+						std::lock_guard<std::mutex> lock(client_data.screen_info_mutex);
+						tmp_butt_index = client_data.screen_info_.id;
+					}
+
+					CreateGetIOFileShowMessage(tmp_data, tmp_butt_index, false);
+
+					SendTo(client_data, tmp_data);
+				}
+				break;
+			case 2:	// просмотр заданий
+
+				break;
+			case 3:	// редактирование
+
+				break;
+			case 4:	// удалить
+				if (TeacherDeleteConfirmMenu()) { // удалить
+					{
+						std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+						client_data.menu_.set_notification(7, "(В обработке...)");
+						client_data.menu_.set_notification_color(7, YELLOW_COLOR);
+					}
+					std::vector<char> tmp_data;
+					
+					uint32_t tmp_butt_index;
+					{
+						std::lock_guard<std::mutex> lock(client_data.screen_info_mutex);
+						tmp_butt_index = client_data.screen_info_.id;
+					}
+
+					CreateDeleteTaskMessage(tmp_data, tmp_butt_index);
+					
+					SendTo(client_data, tmp_data);
+				}
+				else {
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+					client_data.menu_.advanced_display_menu();
+				}
+				break;
+			case 5:	// назад
+				{
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+					client_data.menu_.set_notification(8, "(В обработке...)");
+					client_data.menu_.set_notification_color(8, YELLOW_COLOR);
 					client_data.menu_.advanced_clear_console();
 					client_data.menu_.advanced_display_menu();
 				}
@@ -571,6 +643,20 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 			break;
 		}
 		break;
+	case GET_IO_FILE:
+		switch (msg_header.third_code)
+		{
+		case 3:	// ответ для input
+			return GetInputFile(msg_header, recv_buffer, client_data);
+			break;
+		case 4:	// ответ для output
+			return GetOutputFile(msg_header, recv_buffer, client_data);
+			break;
+		default:
+			return false;	// неизветная команда
+			break;
+		}
+		break;
 	default:
 		return false;	// неизвестная команда
 		break;
@@ -714,6 +800,110 @@ bool GetTaskInfoForTeacher(const MsgHead& msg_header, const std::vector<char>& r
 	// значит все удачно прочитали 
 
 	TeacherTaskInfo(client_data, tmp_name, tmp_info, tmp_count_of_complited, tmp_butt_index);
+
+	return true;
+}
+
+bool GetInputFile(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data) {
+	// временные переменные
+	uint32_t tmp_screen_type;
+	uint32_t tmp_screen_role;
+
+	{
+		std::lock_guard<std::mutex> lock(client_data.screen_info_mutex);
+		tmp_screen_type = client_data.screen_info_.type;
+		tmp_screen_role = client_data.screen_info_.role;
+	}
+
+	if (tmp_screen_role == TEACHER_ROLE && tmp_screen_type == 3) {	// находимся внутри нужного меню
+		uint32_t uint32_t_buffer;
+		std::string tmp_str;
+
+		uint32_t index = msg_header.size_of();
+		try {	// пытаемся прочиать 
+			uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+			index += sizeof(uint32_t);
+
+			tmp_str.insert(tmp_str.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		}
+		catch (...) {
+			return false;
+		}
+
+		// прочитали => дальше заносим во временный файл
+		std::ofstream file(GetAppDirectory() + "\\show_io.txt", std::ios::trunc);
+		
+		if (file.is_open() == false)
+			return false;
+
+		file << tmp_str;	// записали все в файл
+
+		file.close();
+
+		//дальше очищаем "(В обработке...)" и открываем сам файл
+		{
+			std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+			client_data.menu_.set_notification(0, "");
+			client_data.menu_.advanced_clear_console();
+			client_data.menu_.advanced_display_menu();
+		}
+
+		std::string tmp_path = GetAppDirectory() + "\\show_io.txt";
+
+		OpenFileForUser(tmp_path);
+	}
+
+	return true;
+}
+
+bool GetOutputFile(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data) {
+	// временные переменные
+	uint32_t tmp_screen_type;
+	uint32_t tmp_screen_role;
+
+	{
+		std::lock_guard<std::mutex> lock(client_data.screen_info_mutex);
+		tmp_screen_type = client_data.screen_info_.type;
+		tmp_screen_role = client_data.screen_info_.role;
+	}
+
+	if (tmp_screen_role == TEACHER_ROLE && tmp_screen_type == 3) {	// находимся внутри нужного меню
+		uint32_t uint32_t_buffer;
+		std::string tmp_str;
+
+		uint32_t index = msg_header.size_of();
+		try {	// пытаемся прочиать 
+			uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+			index += sizeof(uint32_t);
+
+			tmp_str.insert(tmp_str.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		}
+		catch (...) {
+			return false;
+		}
+
+		// прочитали => дальше заносим во временный файл
+		std::ofstream file(GetAppDirectory() + "\\show_io.txt", std::ios::trunc);
+
+		if (file.is_open() == false)
+			return false;
+
+		file << tmp_str;	// записали все в файл
+
+		file.close();
+
+		//дальше очищаем "(В обработке...)" и открываем сам файл
+		{
+			std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+			client_data.menu_.set_notification(1, "");
+			client_data.menu_.advanced_clear_console();
+			client_data.menu_.advanced_display_menu();
+		}
+
+		std::string tmp_path = GetAppDirectory() + "\\show_io.txt";
+
+		OpenFileForUser(tmp_path);
+	}
 
 	return true;
 }
@@ -923,7 +1113,7 @@ void TeacherAlltasks(Client_data& client_data, std::vector<std::string> buttons)
 	for (uint32_t i{ 0 }; i < buttons.size(); i++)
 		client_data.menu_.push_back_butt(buttons[i]);
 
-	client_data.menu_.push_back_butt("Нахад");
+	client_data.menu_.push_back_butt("Назад");
 	client_data.menu_.set_color(buttons.size(), BLUE_COLOR);
 
 	client_data.menu_.advanced_clear_console();
@@ -950,6 +1140,12 @@ void TeacherTaskInfo(Client_data& client_data, const std::string& name, const st
 
 	client_data.menu_.push_back_text("Студентов, сдавших работы: " + std::to_string(count_of_completes));
 
+	client_data.menu_.push_back_butt("Просмотр input файла");
+	client_data.menu_.set_color(3, LIGHT_CYAN_COLOR);
+
+	client_data.menu_.push_back_butt("Просмотр output файла");
+	client_data.menu_.set_color(4, LIGHT_CYAN_COLOR);
+
 	client_data.menu_.push_back_butt("Просмотр решений");
 
 	client_data.menu_.push_back_butt("Редактирование");
@@ -963,6 +1159,20 @@ void TeacherTaskInfo(Client_data& client_data, const std::string& name, const st
 	client_data.screen_info_.type = 3;
 	client_data.screen_info_.id = butt_index;
 	client_data.screen_info_.role = TEACHER_ROLE;
+}
+
+bool TeacherDeleteConfirmMenu() {
+	EasyMenu menu("Назад", "Подтвердить удаление");
+	menu.set_info("Подтвеждение удаления");
+	menu.set_info_main_color(LIGHT_YELLOW_COLOR);
+
+	menu.insert_text(0, "Удаление задания требует подтвеждения!");
+	menu.set_color(0, RED_COLOR);
+
+	if (menu.easy_run() == 1)
+		return true;
+
+	return false;
 }
 
 bool SendTo(Client_data& client_data, const std::vector<char>& data) {
@@ -1123,7 +1333,7 @@ void CreateNewTaskMessage(const std::string& name, const std::string& info, cons
 	vect.insert(vect.end(), main_data.begin(), main_data.end());
 }
 
-void CreateGetTaskInfo(std::vector<char>& vect, const uint32_t& butt_index) {
+void CreateGetTaskInfoMessage(std::vector<char>& vect, const uint32_t& butt_index) {
 	// временные перменные
 	uint32_t uint32_t_buffer;
 	unsigned char uchar_buffer;
@@ -1150,6 +1360,79 @@ void CreateGetTaskInfo(std::vector<char>& vect, const uint32_t& butt_index) {
 	uint32_t_buffer = butt_index;
 	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+}
+
+void CreateDeleteTaskMessage(std::vector<char>& vect, const uint32_t& butt_index) {
+	// временные перменные
+	std::vector<char> main_data;
+
+	uint32_t uint32_t_buffer;
+	unsigned char uchar_buffer;
+	char* tmp_ptr;
+
+	// перевод main_data
+	uint32_t_buffer = butt_index;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	// составление самого запроса
+	vect.clear();
+
+	uchar_buffer = FROM_CLIENT;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = DELETE_TASK;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 0;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = main_data.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
+void CreateGetIOFileShowMessage(std::vector<char>& vect, const uint32_t& butt_index, bool is_input) {
+	// временные переменные
+	std::vector<char> main_data;
+
+	uint32_t uint32_t_buffer;
+	unsigned char uchar_buffer;
+	char* tmp_ptr;
+
+	// заполенние main_data
+	uint32_t_buffer = butt_index;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	// заполенение всего сообщения
+	vect.clear();
+
+	uchar_buffer = FROM_CLIENT;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = GET_IO_FILE;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	if (is_input)
+		uint32_t_buffer = 1;
+	else
+		uint32_t_buffer = 2;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = main_data.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	vect.insert(vect.end(), main_data.begin(), main_data.end());
 }
 
 //перифирия-------------------------------------------------------
@@ -1183,4 +1466,29 @@ std::wstring OpenFileDialog()
 		return std::wstring(ofn.lpstrFile);
 
 	return L"";
+}
+
+std::string GetAppDirectory() {
+	char path[MAX_PATH];
+	GetModuleFileNameA(nullptr, path, MAX_PATH);
+	std::string dir(path);
+	size_t pos = dir.find_last_of("\\/");
+	return dir.substr(0, pos);
+}
+
+void OpenFileForUser(const std::string& file_path)
+{
+	// Открывает файл в стандартной программе Windows
+	HINSTANCE result = ShellExecuteA(
+		nullptr,           // окно-владелец (nullptr — любое)
+		"open",            // операция
+		file_path.c_str(), // путь к файлу
+		nullptr,           // параметры
+		nullptr,           // рабочая директория
+		SW_SHOW            // показать окно
+	);
+
+	// Проверим результат
+	if ((int)result <= 32)
+		MessageBoxA(nullptr, "Не удалось открыть файл!", "Ошибка", MB_ICONERROR);
 }
