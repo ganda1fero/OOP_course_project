@@ -9,6 +9,7 @@
 #define GET_TASK_INFO 101
 #define DELETE_TASK 44
 #define GET_IO_FILE 102
+#define CHANGE_TASK 103
 
 #include "ServerLogic.h"
 
@@ -635,6 +636,78 @@ void CreateGetOutputFileMessage(std::vector<char>& vect, uint32_t butt_index, Se
 	vect.insert(vect.end(), main_data.begin(), main_data.end());
 }
 
+void CreateChangeTaskMessage(std::vector<char>& vect, uint32_t butt_index, ServerData& server) {
+	// временные перемернные
+	uint32_t uint32_t_buffer;
+	unsigned char uchar_buffer;
+	char* tmp_ptr;
+
+	// составление main_data
+	std::vector<char> main_data;
+
+	std::string tmp_name;
+	std::string tmp_info;
+	std::string tmp_input_file;
+	std::string tmp_output_file;
+	{
+		std::lock_guard<std::mutex> lock(server.tasks_mutex);
+		
+		tmp_name = server.all_tasks[butt_index]->task_name;
+		tmp_info = server.all_tasks[butt_index]->task_info;
+		tmp_input_file = server.all_tasks[butt_index]->input_file;
+		tmp_output_file = server.all_tasks[butt_index]->output_file;
+	}
+
+	uint32_t_buffer = butt_index;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = tmp_name.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), tmp_name.begin(), tmp_name.end());
+
+	uint32_t_buffer = tmp_info.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), tmp_info.begin(), tmp_info.end());
+
+	uint32_t_buffer = tmp_input_file.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), tmp_input_file.begin(), tmp_input_file.end());
+
+	uint32_t_buffer = tmp_output_file.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), tmp_output_file.begin(), tmp_output_file.end());
+
+	// составление основного сообщени€
+	vect.clear();
+
+	uchar_buffer = FROM_SERVER;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = CHANGE_TASK;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 2;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = main_data.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
 bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
 	if (msg_header.first_code != FROM_CLIENT) {
 		std::string tmp_str{ "ќшибка первичного кода сообщени€ от " };
@@ -668,6 +741,9 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 		break;
 	case GET_IO_FILE:
 		return ProcessGetInputOutputFileMessage(msg_header, recv_buffer, connection_ptr, server, logs);
+		break;
+	case CHANGE_TASK:
+		return ProcessChangeTaskMessage(msg_header, recv_buffer, connection_ptr, server, logs);
 		break;
 	default:	// заглушка дл€ неизвестных
 		std::string tmp_str{ "Ќеизвестный вторичный код сообщени€ от " };
@@ -987,6 +1063,154 @@ bool ProcessGetInputOutputFileMessage(const MsgHead& msg_header, const std::vect
 	}
 
 	logs.insert(EL_ACTION, "ѕользователь " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')') + " открыл " + ((msg_header.third_code == 1) ? "input" : "output") + " файл задани€: " + std::to_string(uint32_t_buffer) + '(' + server.all_tasks[uint32_t_buffer]->task_name + ')');
+
+	return SendTo(connection_ptr, tmp_data, logs);
+}
+
+bool ProcessChangeTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
+	if (connection_ptr->account_ptr == nullptr || connection_ptr->account_ptr->role != TEACHER_ROLE) {
+		logs.insert(EL_ERROR, EL_ACTION, "ѕользователь " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + " вышел за пределы роли (удаление задани€)");
+		return false;
+	}
+
+	switch (msg_header.third_code)
+	{
+	case 0:	// запрос просто на менюшку
+		return ProcessGetChangeTaskMenuMessage(msg_header, recv_buffer, connection_ptr, server, logs);
+		break;
+	case 103:	// запрос на изменени€
+		return ProcessChangeThatTaskMessage(msg_header, recv_buffer, connection_ptr, server, logs);
+		break;
+	default:
+		logs.insert(EL_ERROR, EL_NETWORK, EL_ACTION, "ќшибка чтени€ запроса third_code от " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+		break;
+	}
+}
+
+bool ProcessGetChangeTaskMenuMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+
+	uint32_t index = msg_header.size_of();
+	try {
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+	}
+	catch (...) {
+		logs.insert(EL_ERROR, EL_NETWORK, EL_ACTION, "ќшибка чтени€ запроса от " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	{
+		std::lock_guard<std::mutex> lock1(server.tasks_mutex);
+		if (uint32_t_buffer > server.all_tasks.size() - 1) {
+			logs.insert(EL_ERROR, EL_NETWORK, EL_ACTION, "ќшибка id (io file) от " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+			return false;
+		}
+	}
+
+	// все хорошо, составл€ем сообщение
+	std::vector<char> tmp_data;
+
+	CreateChangeTaskMessage(tmp_data, uint32_t_buffer, server);
+
+	return SendTo(connection_ptr, tmp_data, logs);
+}
+
+bool ProcessChangeThatTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+
+	uint32_t butt_index;
+	std::string name, info, input_file, output_file;
+	bool is_del_tryes;
+
+	uint32_t index = msg_header.size_of();
+	try {
+		butt_index = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		name.insert(name.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		index += uint32_t_buffer;
+
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		info.insert(info.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		index += uint32_t_buffer;
+
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		input_file.insert(input_file.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		index += uint32_t_buffer;
+
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		output_file.insert(output_file.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		index += uint32_t_buffer;
+		
+		is_del_tryes = *reinterpret_cast<const bool*>(&recv_buffer[index]);
+		index += sizeof(bool);
+	}
+	catch (...) {
+		logs.insert(EL_ERROR, EL_NETWORK, EL_ACTION, "ќшибка чтени€ запроса от " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	{
+		std::lock_guard<std::mutex> lock1(server.tasks_mutex);
+		if (butt_index > server.all_tasks.size() - 1) {
+			logs.insert(EL_ERROR, EL_NETWORK, EL_ACTION, "ќшибка id (io file) от " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+			return false;
+		}
+	}
+
+	// все хорошо, можем измен€ть
+	task_note* task_ptr = new task_note;
+	task_ptr->task_name = name;
+	task_ptr->task_info = info;
+	task_ptr->input_file = input_file;
+	task_ptr->output_file = output_file;
+
+	if (is_del_tryes) {	// удал€ем все решени€ задани€
+		std::lock_guard<std::mutex> lock(server.tasks_mutex);
+		if (server.all_tasks[butt_index] != nullptr) {
+			for (uint32_t i{ 0 }; server.all_tasks[butt_index]->checked_accounts.size(); i++) {
+				if (server.all_tasks[butt_index]->checked_accounts[i] != nullptr) {
+					for (uint32_t g{ 0 }; g < server.all_tasks[butt_index]->checked_accounts[i]->all_tryes.size(); g++) {
+						if (server.all_tasks[butt_index]->checked_accounts[i]->all_tryes[g] != nullptr) {
+							delete server.all_tasks[butt_index]->checked_accounts[i]->all_tryes[g];
+						}
+					}
+					delete server.all_tasks[butt_index]->checked_accounts[i];
+				}
+			}
+			delete server.all_tasks[butt_index];
+		}
+
+		server.all_tasks[butt_index] = task_ptr;	// перезаписали данные
+	}
+	else {	// оставл€ем все решени€
+		std::lock_guard<std::mutex> lock(server.tasks_mutex);
+		
+		if (server.all_tasks[butt_index] != nullptr) {
+			task_ptr->checked_accounts = server.all_tasks[butt_index]->checked_accounts;	// скопировали указатель всех решений
+			delete server.all_tasks[butt_index];	// удалили изначальные данные
+		}
+		server.all_tasks[butt_index] = task_ptr;	// переаписали данные
+	}
+
+	logs.insert(EL_ACTION, "ѕользователь " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + std::string((connection_ptr->account_ptr == nullptr) ? "" : ('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + " ќтредактировал задание");
+
+	std::vector<char> tmp_data;
+
+	CreateGetTaskInfoForTeacherMessage(tmp_data, butt_index, server);
 
 	return SendTo(connection_ptr, tmp_data, logs);
 }

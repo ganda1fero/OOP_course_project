@@ -11,6 +11,7 @@
 #define GET_TASK_INFO 101
 #define DELETE_TASK 44
 #define GET_IO_FILE 102
+#define CHANGE_TASK 103
 
 // методы классов
 
@@ -349,7 +350,26 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 
 				break;
 			case 3:	// редактирование
+				{
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+					client_data.menu_.set_notification(3, "(В обработке...)");
+					client_data.menu_.set_notification_color(3, YELLOW_COLOR);
 
+					client_data.menu_.advanced_clear_console();
+					client_data.menu_.advanced_display_menu();
+				}
+				{
+					std::vector<char> tmp_data;
+					uint32_t butt_index;
+					{
+						std::lock_guard<std::mutex> lock(client_data.screen_info_mutex);
+						butt_index = client_data.screen_info_.id;
+					}
+
+					CreateChangeTaskMessage(tmp_data, butt_index);
+
+					SendTo(client_data, tmp_data);
+				}
 				break;
 			case 4:	// удалить
 				if (TeacherDeleteConfirmMenu()) { // удалить
@@ -387,7 +407,7 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 				{
 					std::vector<char> tmp_data;
 					CreateGetAllTasksMessage(tmp_data);
-					SendTo(client_data, tmp_data) == false;
+					SendTo(client_data, tmp_data);
 				}
 				break;
 			}
@@ -657,6 +677,17 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 			break;
 		}
 		break;
+	case CHANGE_TASK:
+		switch (msg_header.third_code)
+		{
+		case 2:	// просто получение меню изменения тасков
+			return GetChangeTaskMenu(msg_header, recv_buffer, client_data);
+			break;
+		default:
+			return false;
+			break;
+		}
+		break;
 	default:
 		return false;	// неизвестная команда
 		break;
@@ -908,6 +939,72 @@ bool GetOutputFile(const MsgHead& msg_header, const std::vector<char>& recv_buff
 	return true;
 }
 
+bool GetChangeTaskMenu(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+
+	uint32_t butt_index;
+	std::string name, info, input_file, output_file;
+	
+	uint32_t index = msg_header.size_of();
+	try {
+		butt_index = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		name.insert(name.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		index += uint32_t_buffer;
+
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		info.insert(info.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		index += uint32_t_buffer;
+
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		input_file.insert(input_file.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		index += uint32_t_buffer;
+
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		output_file.insert(output_file.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		index += uint32_t_buffer;
+	}
+	catch (...) {
+		return false;
+	}
+
+	bool tmp_is_del_tryes;
+	if (TeacherChangeTaskMenu(client_data, butt_index, name, info, input_file, output_file, tmp_is_del_tryes)) {	// была нажата "подтвердить изменения"
+		std::vector<char> tmp_data;
+
+		CreateChangeTaskMessage(tmp_data, butt_index, name, info, input_file, output_file, tmp_is_del_tryes);
+
+		if (SendTo(client_data, tmp_data) == false) {
+			std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+			client_data.menu_.set_notification(3, "(Ошибка отправки запроса)");
+			client_data.menu_.set_notification_color(3, RED_COLOR);
+
+			client_data.menu_.advanced_clear_console();
+			client_data.menu_.advanced_display_menu();
+		}
+	}
+	else {	// была нажата "Выход"
+		std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+		client_data.menu_.set_notification(3, "");
+
+		client_data.menu_.advanced_clear_console();
+		client_data.menu_.advanced_display_menu();
+	}
+	
+	return true;
+}
+
 void AuthorisationMenu(Client_data& client_data, std::string text) {
 	std::lock_guard<std::mutex> lock(client_data.menu_mutex);
 
@@ -1061,12 +1158,12 @@ bool TeacherCreateNewTask(Client_data& client_data){
 				break;
 			}
 
-			if (tmp_menu.get_advanced_cin_input(0).length() < 4) {
+			if (tmp_menu.get_advanced_cin_input(0).length() < 3) {
 				tmp_menu.set_notification(4, "(Минимальная длина названия - 3 символа!)");
 				break;
 			}
 
-			if (tmp_menu.get_advanced_cin_input(1).length() < 4) {
+			if (tmp_menu.get_advanced_cin_input(1).length() < 3) {
 				tmp_menu.set_notification(4, "(Минимальная длина описания - 3 символа!)");
 				break;
 			}
@@ -1173,6 +1270,135 @@ bool TeacherDeleteConfirmMenu() {
 		return true;
 
 	return false;
+}
+
+bool TeacherChangeTaskMenu(Client_data& client_data, uint32_t& butt_index, std::string& name, std::string& info, std::string& input_file, std::string& output_file, bool& is_del_tryes) {
+	EasyMenu tmp_menu;
+	tmp_menu.set_info("Изменение задания: (" + name + ')');
+	tmp_menu.set_info_main_color(LIGHT_YELLOW_COLOR);
+
+	tmp_menu.push_back_advanced_cin("Название: ", name);
+	tmp_menu.set_advanced_cin_new_allowed_chars(0, "йцукенгшщзхъфывапролджэячсмитьбю.ЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮqwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890()[] ");
+	tmp_menu.set_advanced_cin_max_input_length(0, 30);
+
+	tmp_menu.push_back_advanced_cin("Краткое описание: ", info);
+	tmp_menu.set_advanced_cin_new_allowed_chars(1, "йцукенгшщзхъфывапролджэячсмитьбю.ЙЦУКЕНГШЩЗХЪФЫВАПРОЛДЖЭЯЧСМИТЬБЮqwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890()[] ");
+	tmp_menu.set_advanced_cin_max_input_length(1, 60);
+
+	tmp_menu.push_back_butt("Вставить input файл");
+	tmp_menu.set_notification(2, "(Изначальный файл) " + std::to_string(input_file.size()) + " байт");
+	tmp_menu.set_color(2, CYAN_COLOR);
+
+	tmp_menu.push_back_butt("Вставить output файл");
+	tmp_menu.set_notification(3, "(Изначальный файл) " + std::to_string(output_file.size()) + " байт");
+	tmp_menu.set_color(3, CYAN_COLOR);
+
+	tmp_menu.push_back_checkbox("Очистить все решения", true);
+	tmp_menu.set_notification(4, "Очистит все сданные работы");
+	tmp_menu.set_notification_color(4, DARK_GRAY_COLOR);
+
+	tmp_menu.push_back_butt("Подтвердить изменения");
+	tmp_menu.set_notification_color(5, RED_COLOR);
+
+	tmp_menu.push_back_butt("Назад");
+
+	// дальше тело
+	std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+	while (true) {
+		switch (tmp_menu.easy_run())
+		{
+		case 2:	// выбрать input файл
+		{
+			std::string tmp_str = WstrToStr(OpenFileDialog());
+			if (tmp_str.empty() == false) {
+				std::ifstream file(tmp_str);
+
+				if (file.is_open() == false) {
+					tmp_menu.set_notification(2, "Не удалось открыть выбранный файл!");
+					tmp_menu.set_notification_color(2, RED_COLOR);
+				}
+				else {
+					std::ostringstream buffer;
+					buffer << file.rdbuf(); // считывает весь поток
+
+					input_file.clear();
+					input_file = buffer.str();
+
+					tmp_menu.set_notification(2, tmp_str + " -> " + std::to_string(input_file.length()) + " байтов");
+					tmp_menu.set_notification_color(2, GREEN_COLOR);
+
+					file.close();
+				}
+			}
+		}
+			break;
+		case 3:	// выбрать output файл
+		{
+			std::string tmp_str = WstrToStr(OpenFileDialog());
+			if (tmp_str.empty() == false) {
+				std::ifstream file(tmp_str);
+
+				if (file.is_open() == false) {
+					tmp_menu.set_notification(3, "Не удалось открыть выбранный файл!");
+					tmp_menu.set_notification_color(3, RED_COLOR);
+				}
+				else {
+					std::ostringstream buffer;
+					buffer << file.rdbuf(); // считывает весь поток
+
+					output_file.clear();
+					output_file = buffer.str();
+
+					tmp_menu.set_notification(3, tmp_str + " -> " + std::to_string(output_file.length()) + " байтов");
+					tmp_menu.set_notification_color(3, GREEN_COLOR);
+
+					file.close();
+				}
+			}
+		}
+			break;
+		case 5:	// подтвердить изменения
+			if (tmp_menu.is_all_advanced_cin_correct() == false) {
+				tmp_menu.set_notification(5, "(Исправьте все ошибки ввода!)");
+				break;
+			}
+
+			if (tmp_menu.get_advanced_cin_input(0).length() < 3) {
+				tmp_menu.set_notification(5, "(Минимальная длина названия - 3 символа!)");
+				break;
+			}
+
+			if (tmp_menu.get_advanced_cin_input(1).length() < 3) {
+				tmp_menu.set_notification(5, "(Минимальная длина описания - 3 символа!)");
+				break;
+			}
+
+			if (input_file.empty()) {
+				tmp_menu.set_notification(5, "(Файл input должен быть выбран и не быть пустым!)");
+				break;
+			}
+
+			if (output_file.empty()) {
+				tmp_menu.set_notification(5, "(Файл output должен быть выбран и не быть пустым!)");
+				break;
+			}
+
+			{
+				name = tmp_menu.get_advanced_cin_input(0);
+				info = tmp_menu.get_advanced_cin_input(1);
+				is_del_tryes = tmp_menu.get_all_checkbox_status()[0];
+
+				return true;	// подтвердили изменения
+			}
+			break;
+		case 6:	// выход
+			return false;
+			break;
+		}
+	}
+
+	return true;
 }
 
 bool SendTo(Client_data& client_data, const std::vector<char>& data) {
@@ -1425,6 +1651,105 @@ void CreateGetIOFileShowMessage(std::vector<char>& vect, const uint32_t& butt_in
 		uint32_t_buffer = 1;
 	else
 		uint32_t_buffer = 2;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = main_data.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
+void CreateChangeTaskMessage(std::vector<char>& vect, const uint32_t& butt_index) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+	unsigned char uchar_buffer;
+	char* tmp_ptr;
+
+	// заполеняем полезные данные
+	std::vector<char> main_data;
+
+	uint32_t_buffer = butt_index;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	// заполнение всего запроса
+	vect.clear();
+
+	uchar_buffer = FROM_CLIENT;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = CHANGE_TASK;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 0;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = main_data.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
+void CreateChangeTaskMessage(std::vector<char>& vect, const uint32_t& butt_index, const std::string& name, const std::string& info, const std::string& input_file, const std::string& output_file, const bool& is_del_tryes) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+	unsigned char uchar_buffer;
+	bool bool_buffer;
+	char* tmp_ptr;
+
+	// заполняем main_data
+	std::vector<char> main_data;
+
+	uint32_t_buffer = butt_index;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = name.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), name.begin(), name.end());
+
+	uint32_t_buffer = info.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), info.begin(), info.end());
+
+	uint32_t_buffer = input_file.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), input_file.begin(), input_file.end());
+
+	uint32_t_buffer = output_file.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), output_file.begin(), output_file.end());
+
+	bool_buffer = is_del_tryes;
+	tmp_ptr = reinterpret_cast<char*>(&bool_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(bool));
+
+	// составление всего запроса
+	vect.clear();
+
+	uchar_buffer = FROM_CLIENT;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = CHANGE_TASK;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 103;
 	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 
