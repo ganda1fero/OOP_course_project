@@ -524,6 +524,14 @@ void CreateGetTaskInfoForTeacherMessage(std::vector<char>& vect, uint32_t butt_i
 	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
 	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 
+	uint32_t_buffer = tmp_task.time_limit_ms;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = tmp_task.memory_limit_kb;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
 	uint32_t_buffer = butt_index;
 	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
 	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
@@ -649,6 +657,8 @@ void CreateChangeTaskMessage(std::vector<char>& vect, uint32_t butt_index, Serve
 	std::string tmp_info;
 	std::string tmp_input_file;
 	std::string tmp_output_file;
+	uint32_t time_limit_ms;
+	uint32_t memory_limit_ms;
 	{
 		std::lock_guard<std::mutex> lock(server.tasks_mutex);
 		
@@ -656,6 +666,8 @@ void CreateChangeTaskMessage(std::vector<char>& vect, uint32_t butt_index, Serve
 		tmp_info = server.all_tasks[butt_index]->task_info;
 		tmp_input_file = server.all_tasks[butt_index]->input_file;
 		tmp_output_file = server.all_tasks[butt_index]->output_file;
+		time_limit_ms = server.all_tasks[butt_index]->time_limit_ms;
+		memory_limit_ms = server.all_tasks[butt_index]->memory_limit_kb;
 	}
 
 	uint32_t_buffer = butt_index;
@@ -685,6 +697,12 @@ void CreateChangeTaskMessage(std::vector<char>& vect, uint32_t butt_index, Serve
 	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 
 	main_data.insert(main_data.end(), tmp_output_file.begin(), tmp_output_file.end());
+
+	tmp_ptr = reinterpret_cast<char*>(&time_limit_ms);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	tmp_ptr = reinterpret_cast<char*>(&memory_limit_ms);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 
 	// составление основного сообщения
 	vect.clear();
@@ -872,6 +890,12 @@ bool ProcessCreateNewTaskMessage(const MsgHead& msg_header, const std::vector<ch
 
 		tmp_task.output_file.insert(tmp_task.output_file.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
 		index += uint32_t_buffer;
+
+		tmp_task.time_limit_ms = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		tmp_task.memory_limit_kb = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
 	}
 	catch (...) {
 		// ошибка
@@ -881,7 +905,7 @@ bool ProcessCreateNewTaskMessage(const MsgHead& msg_header, const std::vector<ch
 		return false;
 	}
 
-	server.create_new_task(tmp_task.task_name, tmp_task.task_info, tmp_task.input_file, tmp_task.output_file);
+	server.create_new_task(tmp_task.task_name, tmp_task.task_info, tmp_task.input_file, tmp_task.output_file, tmp_task.time_limit_ms, tmp_task.memory_limit_kb);
 
 	logs.insert(EL_ACTION, EL_JUDGE, "Преподаватель " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string(connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0])) + " успешно создал новый тест");
 
@@ -1122,7 +1146,7 @@ bool ProcessChangeThatTaskMessage(const MsgHead& msg_header, const std::vector<c
 	// временные переменные
 	uint32_t uint32_t_buffer;
 
-	uint32_t butt_index;
+	uint32_t butt_index, time_limit_ms, memory_limit_kb;
 	std::string name, info, input_file, output_file;
 	bool is_del_tryes;
 
@@ -1155,6 +1179,12 @@ bool ProcessChangeThatTaskMessage(const MsgHead& msg_header, const std::vector<c
 		output_file.insert(output_file.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
 		index += uint32_t_buffer;
 		
+		time_limit_ms = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		memory_limit_kb = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
 		is_del_tryes = *reinterpret_cast<const bool*>(&recv_buffer[index]);
 		index += sizeof(bool);
 	}
@@ -1177,6 +1207,8 @@ bool ProcessChangeThatTaskMessage(const MsgHead& msg_header, const std::vector<c
 	task_ptr->task_info = info;
 	task_ptr->input_file = input_file;
 	task_ptr->output_file = output_file;
+	task_ptr->time_limit_ms = time_limit_ms;
+	task_ptr->memory_limit_kb = memory_limit_kb;
 
 	if (is_del_tryes) {	// удаляем все решения задания
 		std::lock_guard<std::mutex> lock(server.tasks_mutex);
@@ -1444,13 +1476,15 @@ uint32_t ServerData::get_count_of_all_tasks() {
 	return all_tasks.size();
 }
 
-void ServerData::create_new_task(const std::string& name, const std::string& info, const std::string& input, const std::string& output) {
+void ServerData::create_new_task(const std::string& name, const std::string& info, const std::string& input, const std::string& output, const uint32_t& time_limit_ms, const uint32_t& memory_limit_kb) {
 	task_note* tmp_ptr = new task_note;
 
 	tmp_ptr->task_name = name;
 	tmp_ptr->task_info = info;
 	tmp_ptr->input_file = input;
 	tmp_ptr->output_file = output;
+	tmp_ptr->time_limit_ms = time_limit_ms;
+	tmp_ptr->memory_limit_kb = memory_limit_kb;
 
 	std::lock_guard<std::mutex> lock(tasks_mutex);
 	all_tasks.push_back(tmp_ptr);
@@ -1679,6 +1713,10 @@ bool ServerData::__read_from_file_all_tasks__() {
 
 			file.read(&tmp_all_tasks[i]->output_file[0], tmp_all_tasks[i]->output_file.size());
 
+			file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->time_limit_ms), sizeof(uint32_t));
+
+			file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->memory_limit_kb), sizeof(uint32_t));
+
 			file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
 			tmp_all_tasks[i]->checked_accounts.resize(uint32_t_buffer);
 
@@ -1775,6 +1813,10 @@ void ServerData::__save_to_file_all_tasks__() {
 		file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
 
 		file.write(&tmp_all_tasks[i]->output_file[0], tmp_all_tasks[i]->output_file.size());
+
+		file.write(reinterpret_cast<char*>(&tmp_all_tasks[i]->time_limit_ms), sizeof(uint32_t));
+
+		file.write(reinterpret_cast<char*>(&tmp_all_tasks[i]->memory_limit_kb), sizeof(uint32_t));
 
 		uint32_t_buffer = tmp_all_tasks[i]->checked_accounts.size();
 		file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));

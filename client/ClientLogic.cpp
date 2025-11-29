@@ -305,8 +305,8 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 			case 0:	// просмотр input файла
 				{
 					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
-					client_data.menu_.set_notification(0, "(В обработке...)");
-					client_data.menu_.set_notification_color(0, YELLOW_COLOR);
+					client_data.menu_.set_notification(5, "(В обработке...)");
+					client_data.menu_.set_notification_color(5, YELLOW_COLOR);
 
 					client_data.menu_.advanced_clear_console();
 					client_data.menu_.advanced_display_menu();
@@ -327,8 +327,8 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 			case 1:	// просмотр output файла
 				{
 					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
-					client_data.menu_.set_notification(1, "(В обработке...)");
-					client_data.menu_.set_notification_color(1, YELLOW_COLOR);
+					client_data.menu_.set_notification(6, "(В обработке...)");
+					client_data.menu_.set_notification_color(6, YELLOW_COLOR);
 
 					client_data.menu_.advanced_clear_console();
 					client_data.menu_.advanced_display_menu();
@@ -352,8 +352,8 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 			case 3:	// редактирование
 				{
 					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
-					client_data.menu_.set_notification(3, "(В обработке...)");
-					client_data.menu_.set_notification_color(3, YELLOW_COLOR);
+					client_data.menu_.set_notification(8, "(В обработке...)");
+					client_data.menu_.set_notification_color(8, YELLOW_COLOR);
 
 					client_data.menu_.advanced_clear_console();
 					client_data.menu_.advanced_display_menu();
@@ -375,8 +375,8 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 				if (TeacherDeleteConfirmMenu()) { // удалить
 					{
 						std::lock_guard<std::mutex> lock(client_data.menu_mutex);
-						client_data.menu_.set_notification(7, "(В обработке...)");
-						client_data.menu_.set_notification_color(7, YELLOW_COLOR);
+						client_data.menu_.set_notification(9, "(В обработке...)");
+						client_data.menu_.set_notification_color(9, YELLOW_COLOR);
 					}
 					std::vector<char> tmp_data;
 					
@@ -399,8 +399,8 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 			case 5:	// назад
 				{
 					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
-					client_data.menu_.set_notification(8, "(В обработке...)");
-					client_data.menu_.set_notification_color(8, YELLOW_COLOR);
+					client_data.menu_.set_notification(10, "(В обработке...)");
+					client_data.menu_.set_notification_color(10, YELLOW_COLOR);
 					client_data.menu_.advanced_clear_console();
 					client_data.menu_.advanced_display_menu();
 				}
@@ -802,7 +802,7 @@ bool GetTaskInfoForTeacher(const MsgHead& msg_header, const std::vector<char>& r
 	uint32_t uint32_t_buffer;
 
 	std::string tmp_name, tmp_info;
-	uint32_t tmp_count_of_complited, tmp_butt_index;
+	uint32_t tmp_count_of_complited, tmp_time_limit_ms, tmp_memory_limit_kb, tmp_butt_index;
 
 	uint32_t index = msg_header.size_of();
 	try {
@@ -821,6 +821,12 @@ bool GetTaskInfoForTeacher(const MsgHead& msg_header, const std::vector<char>& r
 		tmp_count_of_complited = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
 		index += sizeof(uint32_t);
 
+		tmp_time_limit_ms = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		tmp_memory_limit_kb = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
 		tmp_butt_index = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
 		index += sizeof(uint32_t);
 	}
@@ -830,7 +836,7 @@ bool GetTaskInfoForTeacher(const MsgHead& msg_header, const std::vector<char>& r
 
 	// значит все удачно прочитали 
 
-	TeacherTaskInfo(client_data, tmp_name, tmp_info, tmp_count_of_complited, tmp_butt_index);
+	TeacherTaskInfo(client_data, tmp_name, tmp_info, tmp_count_of_complited, tmp_time_limit_ms, tmp_memory_limit_kb, tmp_butt_index);
 
 	return true;
 }
@@ -874,7 +880,7 @@ bool GetInputFile(const MsgHead& msg_header, const std::vector<char>& recv_buffe
 		//дальше очищаем "(В обработке...)" и открываем сам файл
 		{
 			std::lock_guard<std::mutex> lock(client_data.menu_mutex);
-			client_data.menu_.set_notification(0, "");
+			client_data.menu_.set_notification(5, "");
 			client_data.menu_.advanced_clear_console();
 			client_data.menu_.advanced_display_menu();
 		}
@@ -926,7 +932,7 @@ bool GetOutputFile(const MsgHead& msg_header, const std::vector<char>& recv_buff
 		//дальше очищаем "(В обработке...)" и открываем сам файл
 		{
 			std::lock_guard<std::mutex> lock(client_data.menu_mutex);
-			client_data.menu_.set_notification(1, "");
+			client_data.menu_.set_notification(6, "");
 			client_data.menu_.advanced_clear_console();
 			client_data.menu_.advanced_display_menu();
 		}
@@ -943,7 +949,7 @@ bool GetChangeTaskMenu(const MsgHead& msg_header, const std::vector<char>& recv_
 	// временные переменные
 	uint32_t uint32_t_buffer;
 
-	uint32_t butt_index;
+	uint32_t butt_index, time_limit_ms, memory_limit_kb;
 	std::string name, info, input_file, output_file;
 	
 	uint32_t index = msg_header.size_of();
@@ -974,21 +980,35 @@ bool GetChangeTaskMenu(const MsgHead& msg_header, const std::vector<char>& recv_
 
 		output_file.insert(output_file.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
 		index += uint32_t_buffer;
+
+		time_limit_ms = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		memory_limit_kb = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
 	}
 	catch (...) {
 		return false;
 	}
 
 	bool tmp_is_del_tryes;
-	if (TeacherChangeTaskMenu(client_data, butt_index, name, info, input_file, output_file, tmp_is_del_tryes)) {	// была нажата "подтвердить изменения"
+	if (TeacherChangeTaskMenu(client_data, butt_index, name, info, input_file, output_file, time_limit_ms, memory_limit_kb, tmp_is_del_tryes)) {	// была нажата "подтвердить изменения"
 		std::vector<char> tmp_data;
 
-		CreateChangeTaskMessage(tmp_data, butt_index, name, info, input_file, output_file, tmp_is_del_tryes);
+		CreateChangeTaskMessage(tmp_data, butt_index, name, info, input_file, output_file, time_limit_ms, memory_limit_kb, tmp_is_del_tryes);
 
 		if (SendTo(client_data, tmp_data) == false) {
 			std::lock_guard<std::mutex> lock(client_data.menu_mutex);
-			client_data.menu_.set_notification(3, "(Ошибка отправки запроса)");
-			client_data.menu_.set_notification_color(3, RED_COLOR);
+			client_data.menu_.set_notification(8, "(Ошибка отправки запроса)");
+			client_data.menu_.set_notification_color(8, RED_COLOR);
+
+			client_data.menu_.advanced_clear_console();
+			client_data.menu_.advanced_display_menu();
+		}
+		else {
+			std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+			client_data.menu_.set_notification(8, "(Успешно изменено)");
+			client_data.menu_.set_notification_color(8, GREEN_COLOR);
 
 			client_data.menu_.advanced_clear_console();
 			client_data.menu_.advanced_display_menu();
@@ -996,7 +1016,7 @@ bool GetChangeTaskMenu(const MsgHead& msg_header, const std::vector<char>& recv_
 	}
 	else {	// была нажата "Выход"
 		std::lock_guard<std::mutex> lock(client_data.menu_mutex);
-		client_data.menu_.set_notification(3, "");
+		client_data.menu_.set_notification(8, "");
 
 		client_data.menu_.advanced_clear_console();
 		client_data.menu_.advanced_display_menu();
@@ -1092,8 +1112,18 @@ bool TeacherCreateNewTask(Client_data& client_data){
 	tmp_menu.set_notification(3, "(Файл не выбран!)");
 	tmp_menu.set_color(3, CYAN_COLOR);
 
+	tmp_menu.push_back_advanced_cin("Лимит по времени:");
+	tmp_menu.set_advanced_cin_max_input_length(4, 4);
+	tmp_menu.set_advanced_cin_new_allowed_chars(4, "1234567890");
+	tmp_menu.set_notification(4, "(Миллисекунды)");
+
+	tmp_menu.push_back_advanced_cin("Лимит по памяти:");
+	tmp_menu.set_advanced_cin_max_input_length(5, 6);
+	tmp_menu.set_advanced_cin_new_allowed_chars(5, "1234567890");
+	tmp_menu.set_notification(5, "(Кбайты)");
+
 	tmp_menu.push_back_butt("Создать");
-	tmp_menu.set_notification_color(4, RED_COLOR);
+	tmp_menu.set_notification_color(6, RED_COLOR);
 
 	tmp_menu.push_back_butt("Назад");
 
@@ -1152,47 +1182,79 @@ bool TeacherCreateNewTask(Client_data& client_data){
 				}
 			}
 			break;
-		case 4:	// создать
+		case 6:	// создать
 			if (tmp_menu.is_all_advanced_cin_correct() == false) {
-				tmp_menu.set_notification(4, "(Исправьте все ошибки ввода!)");
+				tmp_menu.set_notification(6, "(Исправьте все ошибки ввода!)");
 				break;
 			}
 
 			if (tmp_menu.get_advanced_cin_input(0).length() < 3) {
-				tmp_menu.set_notification(4, "(Минимальная длина названия - 3 символа!)");
+				tmp_menu.set_notification(6, "(Минимальная длина названия - 3 символа!)");
 				break;
 			}
 
 			if (tmp_menu.get_advanced_cin_input(1).length() < 3) {
-				tmp_menu.set_notification(4, "(Минимальная длина описания - 3 символа!)");
+				tmp_menu.set_notification(6, "(Минимальная длина описания - 3 символа!)");
 				break;
 			}
 
 			if (input_file.empty()) {
-				tmp_menu.set_notification(4, "(Файл input должен быть выбран и не быть пустым!)");
+				tmp_menu.set_notification(6, "(Файл input должен быть выбран и не быть пустым!)");
 				break;
 			}
 
 			if (output_file.empty()) {
-				tmp_menu.set_notification(4, "(Файл output должен быть выбран и не быть пустым!)");
+				tmp_menu.set_notification(6, "(Файл output должен быть выбран и не быть пустым!)");
 				break;
 			}
 
-			{
+			if (tmp_menu.get_advanced_cin_input(4).empty()) {
+				tmp_menu.set_notification(6, "(Заполните лимит по времени!)");
+				break;
+			}
+
+			if (tmp_menu.get_advanced_cin_input(4)[0] == '0') {
+				tmp_menu.set_notification(6, "(Лимит по времени не может начинаться с \'0\'!)");
+				break;
+			}
+
+			if (std::stoi(tmp_menu.get_advanced_cin_input(4)) < 10) {
+				tmp_menu.set_notification(6, "(Минимальный лимит времени - 10мс!)");
+				break;
+			}
+
+			if (tmp_menu.get_advanced_cin_input(5).empty()) {
+				tmp_menu.set_notification(6, "(Заполинте лимит по памяти!)");
+				break;
+			}
+
+			if (tmp_menu.get_advanced_cin_input(5)[0] == '0') {
+				tmp_menu.set_notification(6, "(Лимит по памяти не может начинаться с \'0\'!)");
+				break;
+			}
+
+			if (std::stoi(tmp_menu.get_advanced_cin_input(5)) < 1024) {
+				tmp_menu.set_notification(6, "(Минильное ограничение по памяти 1Мб (1024 Кб)!)");
+				break;
+			}
+
+			{	// сам запрос
 				std::vector<char> tmp_data;
 				std::string tmp_name = tmp_menu.get_advanced_cin_input(0);
 				std::string tmp_info = tmp_menu.get_advanced_cin_input(1);
+				uint32_t tmp_time_limit = std::stoi(tmp_menu.get_advanced_cin_input(4));
+				uint32_t tmp_memory_limit = std::stoi(tmp_menu.get_advanced_cin_input(5));
 				
-				CreateNewTaskMessage(tmp_name, tmp_info, input_file, output_file, tmp_data);
+				CreateNewTaskMessage(tmp_name, tmp_info, input_file, output_file, tmp_data, tmp_time_limit, tmp_memory_limit);
 
 				if (SendTo(client_data, tmp_data) == false) {
-					tmp_menu.set_notification(4, "(Ошибка отправки запроса!)");
+					tmp_menu.set_notification(6, "(Ошибка отправки запроса!)");
 					break;
 				}
 				return true;	// запрос успешно отправлен
 			}
 			break;
-		case 5:	// выход
+		case 7:	// выход
 			return false;
 			break;
 		}
@@ -1223,7 +1285,7 @@ void TeacherAlltasks(Client_data& client_data, std::vector<std::string> buttons)
 	client_data.screen_info_.role = TEACHER_ROLE;
 }
 
-void TeacherTaskInfo(Client_data& client_data, const std::string& name, const std::string& info, const uint32_t& count_of_completes, const uint32_t& butt_index) {
+void TeacherTaskInfo(Client_data& client_data, const std::string& name, const std::string& info, const uint32_t& count_of_completes, const uint32_t& time_limit_ms, const uint32_t& memory_limit_kb, const uint32_t& butt_index) {
 	std::lock_guard<std::mutex> lock(client_data.menu_mutex);
 
 	client_data.menu_.clear();
@@ -1235,13 +1297,17 @@ void TeacherTaskInfo(Client_data& client_data, const std::string& name, const st
 
 	client_data.menu_.push_back_text("Описание: " + info);
 
+	client_data.menu_.push_back_text("Ограничение времени: " + std::to_string(time_limit_ms) + " мс");
+
+	client_data.menu_.push_back_text("Ограничение памяти: " + std::to_string(memory_limit_kb) + " Кб");
+
 	client_data.menu_.push_back_text("Студентов, сдавших работы: " + std::to_string(count_of_completes));
 
 	client_data.menu_.push_back_butt("Просмотр input файла");
-	client_data.menu_.set_color(3, LIGHT_CYAN_COLOR);
+	client_data.menu_.set_color(5, LIGHT_CYAN_COLOR);
 
 	client_data.menu_.push_back_butt("Просмотр output файла");
-	client_data.menu_.set_color(4, LIGHT_CYAN_COLOR);
+	client_data.menu_.set_color(6, LIGHT_CYAN_COLOR);
 
 	client_data.menu_.push_back_butt("Просмотр решений");
 
@@ -1272,7 +1338,7 @@ bool TeacherDeleteConfirmMenu() {
 	return false;
 }
 
-bool TeacherChangeTaskMenu(Client_data& client_data, uint32_t& butt_index, std::string& name, std::string& info, std::string& input_file, std::string& output_file, bool& is_del_tryes) {
+bool TeacherChangeTaskMenu(Client_data& client_data, uint32_t& butt_index, std::string& name, std::string& info, std::string& input_file, std::string& output_file, uint32_t& time_limit_ms, uint32_t& memory_limit_kb, bool& is_del_tryes) {
 	EasyMenu tmp_menu;
 	tmp_menu.set_info("Изменение задания: (" + name + ')');
 	tmp_menu.set_info_main_color(LIGHT_YELLOW_COLOR);
@@ -1293,12 +1359,22 @@ bool TeacherChangeTaskMenu(Client_data& client_data, uint32_t& butt_index, std::
 	tmp_menu.set_notification(3, "(Изначальный файл) " + std::to_string(output_file.size()) + " байт");
 	tmp_menu.set_color(3, CYAN_COLOR);
 
+	tmp_menu.push_back_advanced_cin("Лимит по времени:", std::to_string(time_limit_ms));
+	tmp_menu.set_advanced_cin_max_input_length(4, 4);
+	tmp_menu.set_advanced_cin_new_allowed_chars(4, "1234567890");
+	tmp_menu.set_notification(4, "(Миллисекунды)");
+
+	tmp_menu.push_back_advanced_cin("Лимит по памяти:", std::to_string(memory_limit_kb));
+	tmp_menu.set_advanced_cin_max_input_length(5, 6);
+	tmp_menu.set_advanced_cin_new_allowed_chars(5, "1234567890");
+	tmp_menu.set_notification(5, "(Кбайты)");
+
 	tmp_menu.push_back_checkbox("Очистить все решения", true);
-	tmp_menu.set_notification(4, "Очистит все сданные работы");
-	tmp_menu.set_notification_color(4, DARK_GRAY_COLOR);
+	tmp_menu.set_notification(6, "Очистит все сданные работы");
+	tmp_menu.set_notification_color(6, DARK_GRAY_COLOR);
 
 	tmp_menu.push_back_butt("Подтвердить изменения");
-	tmp_menu.set_notification_color(5, RED_COLOR);
+	tmp_menu.set_notification_color(7, RED_COLOR);
 
 	tmp_menu.push_back_butt("Назад");
 
@@ -1358,41 +1434,73 @@ bool TeacherChangeTaskMenu(Client_data& client_data, uint32_t& butt_index, std::
 			}
 		}
 			break;
-		case 5:	// подтвердить изменения
+		case 7:	// подтвердить изменения
 			if (tmp_menu.is_all_advanced_cin_correct() == false) {
-				tmp_menu.set_notification(5, "(Исправьте все ошибки ввода!)");
+				tmp_menu.set_notification(7, "(Исправьте все ошибки ввода!)");
 				break;
 			}
 
 			if (tmp_menu.get_advanced_cin_input(0).length() < 3) {
-				tmp_menu.set_notification(5, "(Минимальная длина названия - 3 символа!)");
+				tmp_menu.set_notification(7, "(Минимальная длина названия - 3 символа!)");
 				break;
 			}
 
 			if (tmp_menu.get_advanced_cin_input(1).length() < 3) {
-				tmp_menu.set_notification(5, "(Минимальная длина описания - 3 символа!)");
+				tmp_menu.set_notification(7, "(Минимальная длина описания - 3 символа!)");
 				break;
 			}
 
 			if (input_file.empty()) {
-				tmp_menu.set_notification(5, "(Файл input должен быть выбран и не быть пустым!)");
+				tmp_menu.set_notification(7, "(Файл input должен быть выбран и не быть пустым!)");
 				break;
 			}
 
 			if (output_file.empty()) {
-				tmp_menu.set_notification(5, "(Файл output должен быть выбран и не быть пустым!)");
+				tmp_menu.set_notification(7, "(Файл output должен быть выбран и не быть пустым!)");
 				break;
 			}
 
-			{
+			if (tmp_menu.get_advanced_cin_input(4).empty()) {
+				tmp_menu.set_notification(7, "(Заполните лимит по времени!)");
+				break;
+			}
+
+			if (tmp_menu.get_advanced_cin_input(4)[0] == '0') {
+				tmp_menu.set_notification(7, "(Лимит по времени не может начинаться с \'0\'!)");
+				break;
+			}
+
+			if (std::stoi(tmp_menu.get_advanced_cin_input(4)) < 10) {
+				tmp_menu.set_notification(7, "(Минимальный лимит времени - 10мс!)");
+				break;
+			}
+
+			if (tmp_menu.get_advanced_cin_input(5).empty()) {
+				tmp_menu.set_notification(7, "(Заполинте лимит по памяти!)");
+				break;
+			}
+
+			if (tmp_menu.get_advanced_cin_input(5)[0] == '0') {
+				tmp_menu.set_notification(7, "(Лимит по памяти не может начинаться с \'0\'!)");
+				break;
+			}
+
+			if (std::stoi(tmp_menu.get_advanced_cin_input(5)) < 1024) {
+				tmp_menu.set_notification(7, "(Минильное ограничение по памяти 1Мб (1024 Кб)!)");
+				break;
+			}
+
+			{	// собираем сами изменения
 				name = tmp_menu.get_advanced_cin_input(0);
 				info = tmp_menu.get_advanced_cin_input(1);
+				time_limit_ms = std::stoi(tmp_menu.get_advanced_cin_input(4));
+				memory_limit_kb = std::stoi(tmp_menu.get_advanced_cin_input(5));
 				is_del_tryes = tmp_menu.get_all_checkbox_status()[0];
 
 				return true;	// подтвердили изменения
 			}
 			break;
-		case 6:	// выход
+		case 8:	// выход
 			return false;
 			break;
 		}
@@ -1504,7 +1612,7 @@ void CreateAuthorisationMessage(const std::string& login, const std::string& pas
 	vect.insert(vect.end(), main_data.begin(), main_data.end());
 }
 
-void CreateNewTaskMessage(const std::string& name, const std::string& info, const std::string& input, const std::string& output, std::vector<char>& vect) {
+void CreateNewTaskMessage(const std::string& name, const std::string& info, const std::string& input, const std::string& output, std::vector<char>& vect, const uint32_t& time_limit_ms, const uint32_t& memory_limit_kb) {
 	// временные переменные 
 	uint32_t uint32_t_buffer;
 	unsigned char uchar_buffer;
@@ -1536,6 +1644,14 @@ void CreateNewTaskMessage(const std::string& name, const std::string& info, cons
 	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 
 	main_data.insert(main_data.end(), output.begin(), output.end());
+
+	uint32_t_buffer = time_limit_ms;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = memory_limit_kb;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 
 	// дальше совмещение
 	vect.clear();
@@ -1696,7 +1812,7 @@ void CreateChangeTaskMessage(std::vector<char>& vect, const uint32_t& butt_index
 	vect.insert(vect.end(), main_data.begin(), main_data.end());
 }
 
-void CreateChangeTaskMessage(std::vector<char>& vect, const uint32_t& butt_index, const std::string& name, const std::string& info, const std::string& input_file, const std::string& output_file, const bool& is_del_tryes) {
+void CreateChangeTaskMessage(std::vector<char>& vect, const uint32_t& butt_index, const std::string& name, const std::string& info, const std::string& input_file, const std::string& output_file, const uint32_t& time_limit_ms, const uint32_t& memory_limit_kb, const bool& is_del_tryes) {
 	// временные переменные
 	uint32_t uint32_t_buffer;
 	unsigned char uchar_buffer;
@@ -1733,6 +1849,14 @@ void CreateChangeTaskMessage(std::vector<char>& vect, const uint32_t& butt_index
 	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 
 	main_data.insert(main_data.end(), output_file.begin(), output_file.end());
+
+	uint32_t_buffer = time_limit_ms;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = memory_limit_kb;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 
 	bool_buffer = is_del_tryes;
 	tmp_ptr = reinterpret_cast<char*>(&bool_buffer);

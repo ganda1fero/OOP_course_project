@@ -30,7 +30,7 @@ struct account_note {
 	uint32_t role{ 0 };
 	std::string password{ "" };
 
-	time_t last_action;
+	time_t last_action{ 0 };
 
 	std::string first_name{ "" };
 	std::string last_name{ "" };
@@ -52,6 +52,8 @@ struct cheacks
 {
 	bool is_good{ false };	// успешная попытка?
 
+	time_t send_time{ 0 };	// время отправки
+
 	std::string info{ "" };	// доп инфа
 
 	std::string cpp_file{ "" };	// путь к отправленному cpp файлу
@@ -69,7 +71,6 @@ struct id_cheack
 	std::vector<cheacks*> all_tryes;	// все его попытки
 };
 
-
 struct task_note {
 	std::string task_name;	// название
 
@@ -77,6 +78,9 @@ struct task_note {
 
 	std::string input_file{ "" };	// значения input
 	std::string output_file{ "" };	// значениея output
+
+	uint32_t time_limit_ms;	// ограничение времени ms
+	uint32_t memory_limit_kb;	// ограничеик памяти kb
 
 	std::vector<id_cheack*> checked_accounts;	// все аккаунты и их попытки
 };
@@ -124,7 +128,7 @@ public:
 
 	// методы (all_tasks)
 	uint32_t get_count_of_all_tasks();
-	void create_new_task(const std::string& name, const std::string& info, const std::string& input, const std::string& output);
+	void create_new_task(const std::string& name, const std::string& info, const std::string& input, const std::string& output, const uint32_t& time_limit_ms, const uint32_t& memory_limit_kb);
 
 	std::mutex tasks_mutex;
 	std::vector<task_note*> all_tasks;

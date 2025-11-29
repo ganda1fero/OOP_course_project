@@ -110,9 +110,9 @@ void AuthorisationMenu(Client_data& client_data, std::string text);
 void TeacherMenu(Client_data& client_data, std::string text);
 bool TeacherCreateNewTask(Client_data& client_data);
 void TeacherAlltasks(Client_data& client_data, std::vector<std::string> buttons);
-void TeacherTaskInfo(Client_data& client_data, const std::string& name, const std::string& info, const uint32_t& count_of_completes, const uint32_t& butt_index);
+void TeacherTaskInfo(Client_data& client_data, const std::string& name, const std::string& info, const uint32_t& count_of_completes, const uint32_t& time_limit_ms, const uint32_t& memory_limit_kb, const uint32_t& butt_index);
 bool TeacherDeleteConfirmMenu();
-bool TeacherChangeTaskMenu(Client_data& client_data, uint32_t& butt_index, std::string& name, std::string& info, std::string& input_file, std::string& output_file, bool& is_del_tryes);
+bool TeacherChangeTaskMenu(Client_data& client_data, uint32_t& butt_index, std::string& name, std::string& info, std::string& input_file, std::string& output_file, uint32_t& time_limit_ms, uint32_t& memory_limit_kb, bool& is_del_tryes);
 
 
 // запросы
@@ -122,7 +122,7 @@ void CreateGetAllTasksMessage(std::vector<char>& vect);
 
 void CreateAuthorisationMessage(const std::string& login, const std::string& password, std::vector<char>& vect);
 
-void CreateNewTaskMessage(const std::string& input, const std::string& output, const std::string& name, const std::string& info, std::vector<char>& vect);
+void CreateNewTaskMessage(const std::string& input, const std::string& output, const std::string& name, const std::string& info, std::vector<char>& vect, const uint32_t& time_limit_ms, const uint32_t& memory_limit_kb);
 
 void CreateGetTaskInfoMessage(std::vector<char>& vect, const uint32_t& butt_index);
 
@@ -131,7 +131,7 @@ void CreateDeleteTaskMessage(std::vector<char>& vect, const uint32_t& butt_index
 void CreateGetIOFileShowMessage(std::vector<char>& vect, const uint32_t& butt_index, bool is_input);
 
 void CreateChangeTaskMessage(std::vector<char>& vect, const uint32_t& butt_index);
-void CreateChangeTaskMessage(std::vector<char>& vect, const uint32_t& butt_index, const std::string& name, const std::string& info, const std::string& input_file, const std::string& output_file, const bool& is_del_tryes);
+void CreateChangeTaskMessage(std::vector<char>& vect, const uint32_t& butt_index, const std::string& name, const std::string& info, const std::string& input_file, const std::string& output_file, const uint32_t& time_limit_ms, const uint32_t& memory_limit_kb, const bool& is_del_tryes);
 
 // перефирия
 std::string WstrToStr(const std::wstring& wstr);
