@@ -233,7 +233,56 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 	switch (tmp_screen_data.role)
 	{
 	case STUDENT_ROLE:
+		switch (client_data.screen_info_.type)
+		{
+		case 1:	// начальное меню
+			switch (pressed_but)
+			{
+			case 0:	// открытие списка заданий
+				{
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+					client_data.menu_.set_notification(0, "(В обработке...)");
+					client_data.menu_.set_notification_color(0, YELLOW_COLOR);
+					client_data.menu_.advanced_clear_console();
+					client_data.menu_.advanced_display_menu();
+				}
+				{
+					std::vector<char> data;
+					CreateGetAllTasksMessage(data);
+					SendTo(client_data, data);
+				}
+				break;
+			case 1:	// настройки
 
+				break;
+			case 2:	// выход (logout)
+				{
+					std::lock_guard<std::mutex> lock(client_data.state_mutex);
+					client_data.state_ = -1;
+				}
+
+				break;
+			}
+			break;
+		case 2:	// все задания (список)
+			{
+				bool is_exit{ false };
+				{
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+					
+					if (pressed_but == client_data.menu_.get_count_of_buttons() - 1)
+						is_exit = true;
+				}
+
+				if (is_exit) {	// нажата кнопка выхода
+					StudentMenu(client_data, "");
+				}
+				else {	// обрабатываем какую-то кнопку
+
+				}
+			}
+			break;
+		}
 		break;
 	case TEACHER_ROLE:
 		switch (client_data.screen_info_.type) {
@@ -619,13 +668,13 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 		switch (msg_header.third_code)
 		{
 		case STUDENT_ROLE:
-
+			return AuthorisationAs(msg_header, recv_buffer, client_data, STUDENT_ROLE);
 			break;
 		case TEACHER_ROLE:
-			return AuthorisationAsTeacher(msg_header, recv_buffer, client_data);
+			return AuthorisationAs(msg_header, recv_buffer, client_data, TEACHER_ROLE);
 			break;
 		case ADMIN_ROLE:
-
+			return AuthorisationAs(msg_header, recv_buffer, client_data, ADMIN_ROLE);
 			break;
 		default:
 			return false;
@@ -638,10 +687,10 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 	case GET_ALL_TASKS:
 		switch (msg_header.third_code)
 		{
-		case 1:	// для студента
-
+		case STUDENT_ROLE:	// для студента
+			return GetAllTasksForStudent(msg_header, recv_buffer, client_data);
 			break;
-		case 2:	// для препода
+		case TEACHER_ROLE:	// для препода
 			return GetAllTasksForTeacher(msg_header, recv_buffer, client_data);
 			break;
 		default:
@@ -727,7 +776,7 @@ bool AccessDenied(const MsgHead& msg_header, const std::vector<char>& recv_buffe
 	return true;
 }
 
-bool AuthorisationAsTeacher(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data) {
+bool AuthorisationAs(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data, const uint32_t role_id) {
 	// буферы
 	unsigned char uchar_buffer{ 0 };
 	uint32_t uint32_t_buffer{ 0 };
@@ -746,7 +795,21 @@ bool AuthorisationAsTeacher(const MsgHead& msg_header, const std::vector<char>& 
 		return false;
 	}
 
-	TeacherMenu(client_data, str_buffer);
+	switch (role_id)
+	{
+	case STUDENT_ROLE:
+		StudentMenu(client_data, str_buffer);
+		break;
+	case TEACHER_ROLE:
+		TeacherMenu(client_data, str_buffer);
+		break;
+	case ADMIN_ROLE:
+		//AdminMenu(client_data, str_buffer);
+		break;
+	default:
+		return false;
+		break;
+	}
 
 	return true;
 }
@@ -793,6 +856,43 @@ bool GetAllTasksForTeacher(const MsgHead& msg_header, const std::vector<char>& r
 	}
 
 	TeacherAlltasks(client_data, tmp_data);
+
+	return true;
+}
+
+bool GetAllTasksForStudent(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data) {
+	// временные переменные
+	std::vector<std::string> names_vect;
+	std::vector<bool> status_vect;
+
+	uint32_t uint32_t_buffer;
+	bool bool_buffer;
+
+	// само чтение
+	uint32_t index = msg_header.size_of();
+	try {
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		names_vect.resize(uint32_t_buffer);
+		status_vect.resize(uint32_t_buffer);
+
+		for (uint32_t i{ 0 }; i < names_vect.size(); i++) {
+			uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+			index += sizeof(uint32_t);
+
+			names_vect[i].insert(names_vect[i].end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+			index += uint32_t_buffer;
+
+			status_vect[i] = recv_buffer[index];
+			index += sizeof(bool);
+		}
+	}
+	catch (...) {
+		return false;
+	}
+
+	StudentAlltasks(client_data, names_vect, status_vect);
 
 	return true;
 }
@@ -1507,6 +1607,72 @@ bool TeacherChangeTaskMenu(Client_data& client_data, uint32_t& butt_index, std::
 	}
 
 	return true;
+}
+
+void StudentMenu(Client_data& client_data, std::string text) {
+	{
+		std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+		client_data.menu_.clear();
+
+		if (text.empty() == false)
+			client_data.menu_.set_info("Здравствуйте, " + text);
+		else
+			client_data.menu_.set_info("Меню студентаы");
+		client_data.menu_.set_info_main_color(LIGHT_YELLOW_COLOR);
+
+		client_data.menu_.push_back_butt("Задания");
+
+		client_data.menu_.push_back_butt("Настройки");
+
+		client_data.menu_.push_back_butt("Выход из аккаунта");
+
+		client_data.menu_.advanced_clear_console();
+		client_data.menu_.advanced_display_menu();
+	}
+
+	std::lock_guard<std::mutex> lock(client_data.screen_info_mutex);
+
+	client_data.screen_info_.type = 1;
+	client_data.screen_info_.id = 0;
+	client_data.screen_info_.role = STUDENT_ROLE;
+}
+
+void StudentAlltasks(Client_data& client_data, const std::vector<std::string>& buttons, const std::vector<bool>& buttons_status) {
+	uint32_t done_counter{ 0 };
+
+	std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+	client_data.menu_.clear();
+
+	client_data.menu_.set_info("Все задания");
+	client_data.menu_.set_info_main_color(LIGHT_YELLOW_COLOR);
+
+	for (uint32_t i{ 0 }; i < buttons.size(); i++) {
+		client_data.menu_.push_back_butt(buttons[i]);
+
+		if (buttons_status[i]) {
+			done_counter++;
+			client_data.menu_.set_notification(i, "(Выполнено)");
+			client_data.menu_.set_notification_color(i, LIGHT_GREEN_COLOR);
+		}
+		else 
+			client_data.menu_.set_notification(i, "(Не выполнено)");
+	}
+
+	client_data.menu_.push_back_butt("Назад");
+	client_data.menu_.set_color(buttons.size(), BLUE_COLOR);
+
+	client_data.menu_.insert_text(0, (done_counter == buttons.size()) ? "Все задания выполнены :D" : ("Осталось выполнить: " + std::to_string(buttons.size() - done_counter) + " заданий"));
+
+	client_data.menu_.advanced_clear_console();
+	client_data.menu_.advanced_display_menu();
+
+	std::lock_guard<std::mutex> lock2(client_data.screen_info_mutex);
+
+	client_data.screen_info_.type = 2;
+	client_data.screen_info_.id = 0;
+	client_data.screen_info_.role = STUDENT_ROLE;
 }
 
 bool SendTo(Client_data& client_data, const std::vector<char>& data) {

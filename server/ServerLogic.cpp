@@ -372,7 +372,7 @@ void CreateAccessDeniedMessage(std::vector<char>& vect, std::string text) {
 	return;
 }
 
-void CreateAuthorisationTeaherMessage(std::vector<char>& vect, serv_connection* connection_ptr) {
+void CreateAuthorisationMessage(std::vector<char>& vect, serv_connection* connection_ptr, const uint32_t role_id) {
 	std::string tmp_str;
 	if (connection_ptr->account_ptr != nullptr)
 		tmp_str = connection_ptr->account_ptr->first_name;
@@ -405,7 +405,7 @@ void CreateAuthorisationTeaherMessage(std::vector<char>& vect, serv_connection* 
 	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
 
-	uint32_t_buffer = TEACHER_ROLE;
+	uint32_t_buffer = role_id;
 	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 
@@ -484,6 +484,67 @@ void CreateGetAllTasksForTeacherMessage(std::vector<char>& vect, ServerData& ser
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
 
 	uint32_t_buffer = 2;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = main_data.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
+void CreateGetAllTasksForUserMessage(std::vector<char>& vect, serv_connection* connection_ptr, ServerData& server) {
+	// временные переменные
+	std::vector<char> main_data;
+	
+	uint32_t uint32_t_buffer;
+	unsigned char uchar_buffer;
+	char* tmp_ptr;
+
+	// main инфа
+	std::vector<task_note*> tmp_tasks;
+	{
+		std::lock_guard<std::mutex> lock(server.tasks_mutex);
+		tmp_tasks = server.all_tasks;
+	}
+
+	uint32_t_buffer = tmp_tasks.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	for (uint32_t i{ 0 }; i < tmp_tasks.size(); i++) {
+		uint32_t_buffer = tmp_tasks[i]->task_name.length();
+		tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+		main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+		main_data.insert(main_data.end(), tmp_tasks[i]->task_name.begin(), tmp_tasks[i]->task_name.end());
+
+		bool is_done{ false };
+		for (uint32_t h{ 0 }; h < tmp_tasks[i]->checked_accounts.size(); h++) {
+			if (tmp_tasks[i]->checked_accounts[h]->account_id == connection_ptr->account_ptr->id) {
+				if (tmp_tasks[i]->checked_accounts[h]->all_tryes.empty() == false)
+					is_done = tmp_tasks[i]->checked_accounts[h]->all_tryes[0]->is_good;	// помечаем как первое (лучшее)
+
+				break;	// досрочно выходим (нашли аккаунт)
+			}
+		}
+
+		main_data.insert(main_data.end(), &is_done, &is_done + sizeof(bool));
+	}
+
+	// все сообщение
+	vect.clear();
+
+	uchar_buffer = FROM_SERVER;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = GET_ALL_TASKS;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 1;
 	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 
@@ -832,13 +893,13 @@ bool ProcessAuthorisationMessage(const MsgHead& msg_header, const std::vector<ch
 	std::vector<char> data;
 	switch ((*it).role) {
 	case USER_ROLE:
-		//CreateAuthorisationStudentMessage(data, connection_ptr);
+		CreateAuthorisationMessage(data, connection_ptr, USER_ROLE);
 		break;	
 	case TEACHER_ROLE:
-		CreateAuthorisationTeaherMessage(data, connection_ptr);
+		CreateAuthorisationMessage(data, connection_ptr, TEACHER_ROLE);
 		break;
 	case ADMIN_ROLE:
-		
+		CreateAuthorisationMessage(data, connection_ptr, ADMIN_ROLE);
 		break;
 	default:
 		return false;
@@ -925,10 +986,11 @@ bool ProcessGetAllTasksMessage(const MsgHead& msg_header, const std::vector<char
 	}
 
 	if (connection_ptr->account_ptr->role == USER_ROLE) { // для юзера
-		
+		CreateGetAllTasksForUserMessage(tmp_data, connection_ptr, server);
 
+		logs.insert(EL_ACTION, "пользователь " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + '(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')' + " зашел в выбор заданий");
 
-
+		return SendTo(connection_ptr, tmp_data, logs);
 	}
 	else if (connection_ptr->account_ptr->role == TEACHER_ROLE) {	// для препода
 		CreateGetAllTasksForTeacherMessage(tmp_data, server);

@@ -169,14 +169,13 @@ bool SendTo(serv_connection* connect_ptr, const std::vector<char>& data, EasyLog
 //------------------(Функции составления message)
 void CreateAccessDeniedMessage(std::vector<char>& vect, std::string text);
 
-//void CreateAuthorisationStudentMessage(std::vector<char>& vect, serv_connection* connection_ptr);
-void CreateAuthorisationTeaherMessage(std::vector<char>& vect, serv_connection* connection_ptr);
-//void CreateAuthorisationAdminMessage(std::vector<char>& vect, serv_connection* connection_ptr);
+
+void CreateAuthorisationMessage(std::vector<char>& vect, serv_connection* connection_ptr, const uint32_t role_id);
 
 void CreateConfirmCreateTaskMessage(std::vector<char>& vect, serv_connection* connection_ptr);
 
 void CreateGetAllTasksForTeacherMessage(std::vector<char>& vect, ServerData& server);
-//void CreateGetAllTasksForUserMessage(std::vector<char>& vect, serv_connection* connection_ptr, ServerData& server);
+void CreateGetAllTasksForUserMessage(std::vector<char>& vect, serv_connection* connection_ptr, ServerData& server);
 
 void CreateGetTaskInfoForTeacherMessage(std::vector<char>& vect, uint32_t butt_index, ServerData& server);
 

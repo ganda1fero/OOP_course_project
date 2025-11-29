@@ -91,11 +91,12 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 // для ProcessMessage
 bool AccessDenied(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
 
-bool AuthorisationAsTeacher(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
+bool AuthorisationAs(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data, const uint32_t role_id);
 
 bool ConfirmCreateTask(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
 
 bool GetAllTasksForTeacher(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
+bool GetAllTasksForStudent(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
 
 bool GetTaskInfoForTeacher(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
 
@@ -114,6 +115,8 @@ void TeacherTaskInfo(Client_data& client_data, const std::string& name, const st
 bool TeacherDeleteConfirmMenu();
 bool TeacherChangeTaskMenu(Client_data& client_data, uint32_t& butt_index, std::string& name, std::string& info, std::string& input_file, std::string& output_file, uint32_t& time_limit_ms, uint32_t& memory_limit_kb, bool& is_del_tryes);
 
+void StudentMenu(Client_data& client_data, std::string text);
+void StudentAlltasks(Client_data& client_data, const std::vector<std::string>& buttons, const std::vector<bool>& buttons_status);
 
 // запросы
 bool SendTo(Client_data& client_data, const std::vector<char>& data);
