@@ -1795,6 +1795,8 @@ bool ServerData::__read_from_file_all_tasks__() {
 
 					file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->is_good), sizeof(bool));
 					
+					file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->send_time), sizeof(time_t));
+
 					file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
 					tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->info.resize(uint32_t_buffer);
 
@@ -1842,6 +1844,7 @@ void ServerData::__save_to_file_all_tasks__() {
 
 	// временная переменные;
 	uint32_t uint32_t_buffer;
+	time_t time_t_buffer;
 	bool bool_buffer;
 
 	std::vector<task_note*> tmp_all_tasks;
@@ -1893,6 +1896,9 @@ void ServerData::__save_to_file_all_tasks__() {
 			for (uint32_t h{ 0 }; h < tmp_all_tasks[i]->checked_accounts[g]->all_tryes.size(); h++) {
 				bool_buffer = tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->is_good;
 				file.write(reinterpret_cast<char*>(&bool_buffer), sizeof(bool));
+
+				time_t_buffer = tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->send_time;
+				file.write(reinterpret_cast<char*>(&time_t_buffer), sizeof(time_t));
 
 				uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->info.length();
 				file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
