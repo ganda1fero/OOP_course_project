@@ -184,6 +184,9 @@ void CreateGetOutputFileMessage(std::vector<char>& vect, uint32_t butt_index, Se
 
 void CreateChangeTaskMessage(std::vector<char>& vect, uint32_t butt_index, ServerData& server);
 
+void CreateSuccessChangePasswordMessage(std::vector<char>& vect);
+void CreateFailChangePasswordMessage(std::vector<char>& vect);
+
 
 //------------------(Функции чтения message)
 bool ProcessAuthorisationMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
@@ -195,5 +198,6 @@ bool ProcessGetInputOutputFileMessage(const MsgHead& msg_header, const std::vect
 bool ProcessChangeTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessGetChangeTaskMenuMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessChangeThatTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessChangePasswordMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 
 #endif

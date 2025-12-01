@@ -105,6 +105,9 @@ bool GetOutputFile(const MsgHead& msg_header, const std::vector<char>& recv_buff
 
 bool GetChangeTaskMenu(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
 
+bool AccessChangePassword(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
+bool FailChangePassword(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
+
 // менюшки
 void AuthorisationMenu(Client_data& client_data, std::string text);
 
@@ -117,6 +120,10 @@ bool TeacherChangeTaskMenu(Client_data& client_data, uint32_t& butt_index, std::
 
 void StudentMenu(Client_data& client_data, std::string text);
 void StudentAlltasks(Client_data& client_data, const std::vector<std::string>& buttons, const std::vector<bool>& buttons_status);
+
+
+void SettingsMenu(Client_data& client_data);
+bool ChangePassword(Client_data& client_data);
 
 // запросы
 bool SendTo(Client_data& client_data, const std::vector<char>& data);
@@ -135,6 +142,8 @@ void CreateGetIOFileShowMessage(std::vector<char>& vect, const uint32_t& butt_in
 
 void CreateChangeTaskMessage(std::vector<char>& vect, const uint32_t& butt_index);
 void CreateChangeTaskMessage(std::vector<char>& vect, const uint32_t& butt_index, const std::string& name, const std::string& info, const std::string& input_file, const std::string& output_file, const uint32_t& time_limit_ms, const uint32_t& memory_limit_kb, const bool& is_del_tryes);
+
+void CreateChangePasswordMessage(std::vector<char>& vect, const std::string& prev_password, const std::string& new_password);
 
 // перефирия
 std::string WstrToStr(const std::wstring& wstr);

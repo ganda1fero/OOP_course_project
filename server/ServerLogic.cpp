@@ -10,6 +10,7 @@
 #define DELETE_TASK 44
 #define GET_IO_FILE 102
 #define CHANGE_TASK 103
+#define CHANGE_PASSWORD 5
 
 #include "ServerLogic.h"
 
@@ -787,6 +788,64 @@ void CreateChangeTaskMessage(std::vector<char>& vect, uint32_t butt_index, Serve
 	vect.insert(vect.end(), main_data.begin(), main_data.end());
 }
 
+void CreateSuccessChangePasswordMessage(std::vector<char>& vect) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+	unsigned char uchar_buffer;
+	char* tmp_ptr;
+
+	// составление готового сообщени€
+	vect.clear();
+
+	uchar_buffer = FROM_SERVER;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = CHANGE_PASSWORD;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 1;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	//uint32_t_buffer = main_data.size();
+	uint32_t_buffer = 0;	// т.к нет main_data NULL
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	//vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
+void CreateFailChangePasswordMessage(std::vector<char>& vect) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+	unsigned char uchar_buffer;
+	char* tmp_ptr;
+
+	// составление готового сообщени€
+	vect.clear();
+
+	uchar_buffer = FROM_SERVER;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = CHANGE_PASSWORD;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 2;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	//uint32_t_buffer = main_data.size();
+	uint32_t_buffer = 0;	// т.к нет main_data NULL
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	//vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
 bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
 	if (msg_header.first_code != FROM_CLIENT) {
 		std::string tmp_str{ "ќшибка первичного кода сообщени€ от " };
@@ -823,6 +882,9 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 		break;
 	case CHANGE_TASK:
 		return ProcessChangeTaskMessage(msg_header, recv_buffer, connection_ptr, server, logs);
+		break;
+	case CHANGE_PASSWORD:
+		return ProcessChangePasswordMessage(msg_header, recv_buffer, connection_ptr, server, logs);
 		break;
 	default:	// заглушка дл€ неизвестных
 		std::string tmp_str{ "Ќеизвестный вторичный код сообщени€ от " };
@@ -1307,6 +1369,60 @@ bool ProcessChangeThatTaskMessage(const MsgHead& msg_header, const std::vector<c
 	CreateGetTaskInfoForTeacherMessage(tmp_data, butt_index, server);
 
 	return SendTo(connection_ptr, tmp_data, logs);
+}
+
+bool ProcessChangePasswordMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+
+	std::string cur_pswd, new_pswd;
+
+	// чтение main_data
+	uint32_t index = msg_header.size_of();
+
+	try {
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		cur_pswd.insert(cur_pswd.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		index += uint32_t_buffer;
+
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		new_pswd.insert(new_pswd.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		index += uint32_t_buffer;
+	}
+	catch (...) {
+		logs.insert(EL_ERROR, EL_NETWORK, EL_ACTION, "ќшибка чтени€ запроса от " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+
+		return false;
+	}
+
+	// дальше сама логика
+	if (connection_ptr == nullptr || connection_ptr->account_ptr == nullptr || new_pswd.empty()) {
+		logs.insert(EL_ERROR, EL_NETWORK, EL_ACTION, "ќшибка обработки запроса смены парол€ " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+
+		return false;
+	}
+
+	std::vector<char> data;
+
+	if (connection_ptr->account_ptr->password == cur_pswd) {
+		connection_ptr->account_ptr->password = new_pswd;	// изменили пароль
+
+		logs.insert(EL_ACTION, EL_SECURITY, "—мена парол€ пользователем: " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')));
+
+		CreateSuccessChangePasswordMessage(data);
+	}
+	else {
+		// значит не верный изнач пароль
+		logs.insert(EL_ACTION, EL_SECURITY, "Ќеверный изначальный пароль при попытке смены парол€ от: " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')));
+
+		CreateFailChangePasswordMessage(data);
+	}
+
+	return SendTo(connection_ptr, data, logs);
 }
 
 //---------------------------------------------------------- методы классов

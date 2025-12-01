@@ -12,6 +12,7 @@
 #define DELETE_TASK 44
 #define GET_IO_FILE 102
 #define CHANGE_TASK 103
+#define CHANGE_PASSWORD 5
 
 // методы классов
 
@@ -253,7 +254,7 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 				}
 				break;
 			case 1:	// настройки
-
+				SettingsMenu(client_data);
 				break;
 			case 2:	// выход (logout)
 				{
@@ -280,6 +281,32 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 				else {	// обрабатываем какую-то кнопку
 
 				}
+			}
+			break;
+		case 100:	// настройки
+			switch (pressed_but)
+			{
+			case 0:	// изменение пароля
+				if (ChangePassword(client_data)) {
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+					client_data.menu_.set_notification(0, "(В обработке...)");
+					client_data.menu_.set_notification_color(0, YELLOW_COLOR);
+					client_data.menu_.advanced_clear_console();
+					client_data.menu_.advanced_display_menu();
+				}
+				else {
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+					client_data.menu_.delete_all_notifications();
+
+					client_data.menu_.advanced_clear_console();
+					client_data.menu_.advanced_display_menu();
+				}
+				break;
+			case 1:	// выход
+				StudentMenu(client_data, "");
+				break;
 			}
 			break;
 		}
@@ -737,6 +764,20 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 			break;
 		}
 		break;
+	case CHANGE_PASSWORD:
+		switch (msg_header.third_code)
+		{
+		case 1:	// подтвеждение изменения пароля
+			return AccessChangePassword(msg_header, recv_buffer, client_data);
+			break;
+		case 2:	// отказ изменения пароля
+			return FailChangePassword(msg_header, recv_buffer, client_data);
+			break;
+		default:
+			return false;
+			break;
+		}
+		break;
 	default:
 		return false;	// неизвестная команда
 		break;
@@ -1123,6 +1164,32 @@ bool GetChangeTaskMenu(const MsgHead& msg_header, const std::vector<char>& recv_
 	}
 	
 	return true;
+}
+
+bool AccessChangePassword(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data) {
+	if (client_data.screen_info_.type != 100)
+		return true;	// все равно возвращаем true, просто не используем (меню закрыто)
+
+	std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+	
+	client_data.menu_.set_notification(0, "Пароль изменен");
+	client_data.menu_.set_notification_color(0, LIGHT_GREEN_COLOR);
+
+	client_data.menu_.advanced_clear_console();
+	client_data.menu_.advanced_display_menu();
+}
+
+bool FailChangePassword(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data) {
+	if (client_data.screen_info_.type != 100)
+		return true;	// все равно возвращаем true, просто не используем (меню закрыто)
+
+	std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+	client_data.menu_.set_notification(0, "Пароль не изменен, неверный изнач. пароль!");
+	client_data.menu_.set_notification_color(0, RED_COLOR);
+
+	client_data.menu_.advanced_clear_console();
+	client_data.menu_.advanced_display_menu();
 }
 
 void AuthorisationMenu(Client_data& client_data, std::string text) {
@@ -1675,6 +1742,145 @@ void StudentAlltasks(Client_data& client_data, const std::vector<std::string>& b
 	client_data.screen_info_.role = STUDENT_ROLE;
 }
 
+void SettingsMenu(Client_data& client_data) {
+
+	std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+	client_data.menu_.clear();
+
+	client_data.menu_.set_info("Настройки");
+	client_data.menu_.set_info_main_color(LIGHT_YELLOW_COLOR);
+
+	client_data.menu_.push_back_butt("Изменение пароля");
+	
+	client_data.menu_.push_back_text("В разработке...");
+
+	client_data.menu_.push_back_butt("Назад");
+	client_data.menu_.set_color(2, BLUE_COLOR);
+
+	client_data.menu_.advanced_clear_console();
+	client_data.menu_.advanced_display_menu();
+
+	std::lock_guard<std::mutex> lock2(client_data.screen_info_mutex);
+
+	client_data.screen_info_.type = 100;
+	client_data.screen_info_.id = 0;
+	client_data.screen_info_.role = STUDENT_ROLE;
+}
+
+bool ChangePassword(Client_data& client_data) {
+	
+	EasyMenu tmp_menu;
+	tmp_menu.set_info("Изменение пароля");
+	tmp_menu.set_info_main_color(LIGHT_YELLOW_COLOR);
+
+	tmp_menu.push_back_advanced_cin("Изнач. пароль: ");
+	tmp_menu.set_advanced_cin_new_allowed_chars(0, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM_1234567890");
+	tmp_menu.set_advanced_cin_secure_input_on(0);
+	tmp_menu.set_advanced_cin_ban_not_allowed_on(0);
+
+	tmp_menu.push_back_advanced_cin("Новый  пароль: ");
+	tmp_menu.set_advanced_cin_new_allowed_chars(1, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM_1234567890");
+	tmp_menu.set_advanced_cin_secure_input_on(1);
+	tmp_menu.set_advanced_cin_ban_not_allowed_on(1);
+
+	tmp_menu.push_back_advanced_cin("Повтор пароль: ");
+	tmp_menu.set_advanced_cin_new_allowed_chars(2, "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM_1234567890");
+	tmp_menu.set_advanced_cin_secure_input_on(2);
+	tmp_menu.set_advanced_cin_ban_not_allowed_on(2);
+
+	tmp_menu.push_back_butt("Показать пароль");
+	tmp_menu.set_color(3, LIGHT_CYAN_COLOR);
+
+	tmp_menu.push_back_butt("Изменить");
+
+	tmp_menu.push_back_butt("Назад");
+	tmp_menu.set_color(5, BLUE_COLOR);
+
+	// переменные
+	bool is_secured{ true };
+
+	while (true) {
+		switch (tmp_menu.easy_run())
+		{
+		case 3:	// показать/скрыть пароль
+			if (is_secured) {
+				tmp_menu.set_advanced_cin_secure_input_off(0);
+				tmp_menu.set_advanced_cin_secure_input_off(1);
+				tmp_menu.set_advanced_cin_secure_input_off(2);
+
+				tmp_menu.set_advanced_cin_ban_not_allowed_off(0);
+				tmp_menu.set_advanced_cin_ban_not_allowed_off(1);
+				tmp_menu.set_advanced_cin_ban_not_allowed_off(2);
+
+				tmp_menu.edit(3, "Скрыть пароль");
+			}
+			else {
+				tmp_menu.set_advanced_cin_secure_input_on(0);
+				tmp_menu.set_advanced_cin_secure_input_on(1);
+				tmp_menu.set_advanced_cin_secure_input_on(2);
+
+				tmp_menu.set_advanced_cin_ban_not_allowed_on(0);
+				tmp_menu.set_advanced_cin_ban_not_allowed_on(1);
+				tmp_menu.set_advanced_cin_ban_not_allowed_on(2);
+
+				tmp_menu.edit(3, "Показать пароль");
+			}
+
+			is_secured = !is_secured;
+			break;
+		case 4:	// изменить пароль
+			if (tmp_menu.is_all_advanced_cin_correct() == false) {
+				tmp_menu.set_notification(4, "(Исправьте ошибки в вводе!)");
+				tmp_menu.set_notification_color(4, RED_COLOR);
+
+				break;
+			}
+			if (tmp_menu.get_advanced_cin_input(0).empty()) {
+				tmp_menu.set_notification(4, "(Заполните изначальный пароль)");
+				tmp_menu.set_notification_color(4, RED_COLOR);
+
+				break;
+			}
+			if (tmp_menu.get_advanced_cin_input(1).empty()) {
+				tmp_menu.set_notification(4, "(Заполните новый пароль)");
+				tmp_menu.set_notification_color(4, RED_COLOR);
+
+				break;
+			}
+			if (tmp_menu.get_advanced_cin_input(2).empty()) {
+				tmp_menu.set_notification(4, "(Заполните повтор пароль)");
+				tmp_menu.set_notification_color(4, RED_COLOR);
+
+				break;
+			}
+			if (tmp_menu.get_advanced_cin_input(1) != tmp_menu.get_advanced_cin_input(2)) {
+				tmp_menu.set_notification(4, "(Новый и повтор пароли не совпадают!)");
+				tmp_menu.set_notification_color(4, RED_COLOR);
+
+				break;
+			}
+
+			// все гуд => отправлем запрос
+			{
+				std::string prev_psw = tmp_menu.get_advanced_cin_input(0), new_psw = tmp_menu.get_advanced_cin_input(1);
+
+				std::vector<char> data;
+
+				CreateChangePasswordMessage(data, prev_psw, new_psw);
+
+				SendTo(client_data, data);
+			}
+
+			return true;
+			break;
+		case 5:	// назад (выход)
+			return false;
+			break;
+		}
+	}
+}
+
 bool SendTo(Client_data& client_data, const std::vector<char>& data) {
 	uint32_t sended_count{ 0 };
 
@@ -2040,6 +2246,49 @@ void CreateChangeTaskMessage(std::vector<char>& vect, const uint32_t& butt_index
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
 
 	uint32_t_buffer = 103;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = main_data.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
+void CreateChangePasswordMessage(std::vector<char>& vect, const std::string& prev_password, const std::string& new_password) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+	unsigned char uchar_buffer;
+	char* tmp_ptr;
+
+	std::vector<char> main_data;
+
+	// main_data
+	uint32_t_buffer = prev_password.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), prev_password.begin(), prev_password.end());
+
+	uint32_t_buffer = new_password.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), new_password.begin(), new_password.end());
+
+	// вся data
+	vect.clear();
+
+	uchar_buffer = FROM_CLIENT;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = CHANGE_PASSWORD;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 0;
 	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 
