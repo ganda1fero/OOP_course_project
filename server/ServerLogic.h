@@ -30,7 +30,7 @@ struct account_note {
 	uint32_t role{ 0 };
 	std::string password{ "" };
 
-	time_t last_action;
+	time_t last_action{ 0 };
 
 	std::string first_name{ "" };
 	std::string last_name{ "" };
@@ -52,6 +52,8 @@ struct cheacks
 {
 	bool is_good{ false };	// успешная попытка?
 
+	time_t send_time{ 0 };	// время отправки
+
 	std::string info{ "" };	// доп инфа
 
 	std::string cpp_file{ "" };	// путь к отправленному cpp файлу
@@ -69,7 +71,6 @@ struct id_cheack
 	std::vector<cheacks*> all_tryes;	// все его попытки
 };
 
-
 struct task_note {
 	std::string task_name;	// название
 
@@ -77,6 +78,9 @@ struct task_note {
 
 	std::string input_file{ "" };	// значения input
 	std::string output_file{ "" };	// значениея output
+
+	uint32_t time_limit_ms;	// ограничение времени ms
+	uint32_t memory_limit_kb;	// ограничеик памяти kb
 
 	std::vector<id_cheack*> checked_accounts;	// все аккаунты и их попытки
 };
@@ -124,7 +128,7 @@ public:
 
 	// методы (all_tasks)
 	uint32_t get_count_of_all_tasks();
-	void create_new_task(const std::string& name, const std::string& info, const std::string& input, const std::string& output);
+	void create_new_task(const std::string& name, const std::string& info, const std::string& input, const std::string& output, const uint32_t& time_limit_ms, const uint32_t& memory_limit_kb);
 
 	std::mutex tasks_mutex;
 	std::vector<task_note*> all_tasks;
@@ -165,16 +169,25 @@ bool SendTo(serv_connection* connect_ptr, const std::vector<char>& data, EasyLog
 //------------------(Функции составления message)
 void CreateAccessDeniedMessage(std::vector<char>& vect, std::string text);
 
-//void CreateAuthorisationStudentMessage(std::vector<char>& vect, serv_connection* connection_ptr);
-void CreateAuthorisationTeaherMessage(std::vector<char>& vect, serv_connection* connection_ptr);
-//void CreateAuthorisationAdminMessage(std::vector<char>& vect, serv_connection* connection_ptr);
+
+void CreateAuthorisationMessage(std::vector<char>& vect, serv_connection* connection_ptr, const uint32_t role_id);
 
 void CreateConfirmCreateTaskMessage(std::vector<char>& vect, serv_connection* connection_ptr);
 
 void CreateGetAllTasksForTeacherMessage(std::vector<char>& vect, ServerData& server);
-//void CreateGetAllTasksForUserMessage(std::vector<char>& vect, serv_connection* connection_ptr, ServerData& server);
+void CreateGetAllTasksForUserMessage(std::vector<char>& vect, serv_connection* connection_ptr, ServerData& server);
 
 void CreateGetTaskInfoForTeacherMessage(std::vector<char>& vect, uint32_t butt_index, ServerData& server);
+
+void CreateGetInputFileMessage(std::vector<char>& vect, uint32_t butt_index, ServerData& server);
+void CreateGetOutputFileMessage(std::vector<char>& vect, uint32_t butt_index, ServerData& server);
+
+void CreateChangeTaskMessage(std::vector<char>& vect, uint32_t butt_index, ServerData& server);
+
+void CreateSuccessChangePasswordMessage(std::vector<char>& vect);
+void CreateFailChangePasswordMessage(std::vector<char>& vect);
+
+void CreateGetAllSolutionsMessage(std::vector<char>& vect, const std::vector<cheacks*>& sorted_solutions, const uint32_t& task_id, const id_cheack* account_tryes_ptr, const uint32_t& sort_type, ServerData& server);
 
 
 //------------------(Функции чтения message)
@@ -182,5 +195,12 @@ bool ProcessAuthorisationMessage(const MsgHead& msg_header, const std::vector<ch
 bool ProcessCreateNewTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessGetAllTasksMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessGetTaskInfoMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessDeleteTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessGetInputOutputFileMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessChangeTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessGetChangeTaskMenuMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessChangeThatTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessChangePasswordMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessGetAllSolutionsMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 
 #endif
