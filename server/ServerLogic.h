@@ -187,6 +187,8 @@ void CreateChangeTaskMessage(std::vector<char>& vect, uint32_t butt_index, Serve
 void CreateSuccessChangePasswordMessage(std::vector<char>& vect);
 void CreateFailChangePasswordMessage(std::vector<char>& vect);
 
+void CreateGetAllSolutionsMessage(std::vector<char>& vect, const std::vector<cheacks*>& sorted_solutions, const uint32_t& task_id, const id_cheack* account_tryes_ptr, const uint32_t& sort_type, ServerData& server);
+
 
 //------------------(Функции чтения message)
 bool ProcessAuthorisationMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
@@ -199,5 +201,6 @@ bool ProcessChangeTaskMessage(const MsgHead& msg_header, const std::vector<char>
 bool ProcessGetChangeTaskMenuMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessChangeThatTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessChangePasswordMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessGetAllSolutionsMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 
 #endif

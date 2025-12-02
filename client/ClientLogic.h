@@ -108,6 +108,8 @@ bool GetChangeTaskMenu(const MsgHead& msg_header, const std::vector<char>& recv_
 bool AccessChangePassword(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
 bool FailChangePassword(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
 
+bool GetAllSolutions(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
+
 // менюшки
 void AuthorisationMenu(Client_data& client_data, std::string text);
 
@@ -120,6 +122,7 @@ bool TeacherChangeTaskMenu(Client_data& client_data, uint32_t& butt_index, std::
 
 void StudentMenu(Client_data& client_data, std::string text);
 void StudentAlltasks(Client_data& client_data, const std::vector<std::string>& buttons, const std::vector<bool>& buttons_status);
+template <typename T> void StudentGetAllSolutions(Client_data& client_data, const uint32_t& task_index, const std::string& task_name, const std::string& task_info, const uint32_t& time_limit_ms, const uint32_t& memory_limit_kb, const bool& is_done, const std::vector<T>& solutions, const uint32_t& sort_type);
 
 
 void SettingsMenu(Client_data& client_data);
@@ -145,12 +148,16 @@ void CreateChangeTaskMessage(std::vector<char>& vect, const uint32_t& butt_index
 
 void CreateChangePasswordMessage(std::vector<char>& vect, const std::string& prev_password, const std::string& new_password);
 
+void CreateGetAllSolutionsMessage(std::vector<char>& vect, const uint32_t& task_id, const uint32_t sort_type);
+
 // перефирия
 std::string WstrToStr(const std::wstring& wstr);
 std::wstring OpenFileDialog();
 
 std::string GetAppDirectory();
 void OpenFileForUser(const std::string& file_path);
+
+std::string StringFromTimeT(const time_t& time);
 
 
 #endif
