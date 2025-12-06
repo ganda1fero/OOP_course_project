@@ -3,11 +3,6 @@
 #include "ClientLogic.h"
 
 int main() {
-
-	std::cout << GetAppDirectory();
-
-	Sleep(10000);
-
 	// инициализация всего
 	SOCKET door_sock;
 	Client_data client_data;

@@ -90,7 +90,309 @@ void JudgeCheak(EasyLogs& logs, const qudge_queue_note& note) {
 		return;	// выходим, т.к была ошибка
 	}
 	
+	{	// создаем файлы: input.txt и output.txt
+		std::ofstream i_file(dir_path_str + "Judge_test\\input.txt", std::ios::trunc | std::ios::out);
+		std::ofstream o_file(dir_path_str + "Judge_test\\output.txt", std::ios::trunc | std::ios::out);
 
+		if (o_file.is_open() == false || i_file.is_open() == false) {
+			note.cheack_ptr->is_good = false;
+			note.cheack_ptr->info = "Ошибка создания i/o файлов";
+			note.cheack_ptr->cpu_time_ms = 0;
+			note.cheack_ptr->memory_bytes = 0;
+
+			JudgeInsertResults(note);
+
+			logs.insert(EL_JUDGE, EL_ERROR, "Не получилось создать io файлы, студент: " + std::to_string(note.task_account_ptr->account_id) + ", заканчиваю проверку");
+
+			i_file.close();
+			o_file.close();
+
+			return; // выходим из-за ошибки
+		}
+
+		i_file << note.task_ptr->input_file;
+
+		i_file.close();	// записали нужный input
+		o_file.close();	// очистили output
+	}
+
+	// запускаем проверку
+	judge_run_result j_res = RunExeWithLimits(exe_path_str, dir_path_str, dir_path_str + "Judge_test\\input.txt", dir_path_str + "Judge_test\\output.txt", note.task_ptr->time_limit_ms, note.task_ptr->memory_limit_kb * 1024);
+
+	if (j_res.timeout) {
+		note.cheack_ptr->is_good = false;
+		note.cheack_ptr->info = "Превышен лимит времени";
+		note.cheack_ptr->cpu_time_ms = j_res.time_ms;
+		note.cheack_ptr->memory_bytes = j_res.peak_memory;
+
+		JudgeInsertResults(note);
+
+		logs.insert(EL_JUDGE, "Превышение времени: " + std::to_string(j_res.time_ms) + ", студент: " + std::to_string(note.task_account_ptr->account_id) + ", проверка остановлена");
+
+		return;
+	}
+	else if (j_res.memlimit) {
+		note.cheack_ptr->is_good = false;
+		note.cheack_ptr->info = "Превышен лимит памяти";
+		note.cheack_ptr->cpu_time_ms = j_res.time_ms;
+		note.cheack_ptr->memory_bytes = j_res.peak_memory;
+
+		JudgeInsertResults(note);
+
+		logs.insert(EL_JUDGE, "Превышение памяти: " + std::to_string(j_res.peak_memory) + " байт, студент: " + std::to_string(note.task_account_ptr->account_id) + ", проверка остановлена");
+
+		return;
+	}
+	else if (j_res.success == false) {
+		note.cheack_ptr->is_good = false;
+		note.cheack_ptr->info = "Rintime ошибка";
+		note.cheack_ptr->cpu_time_ms = j_res.time_ms;
+		note.cheack_ptr->memory_bytes = j_res.peak_memory;
+
+		JudgeInsertResults(note);
+
+		logs.insert(EL_JUDGE, "Runtime ошибка, студент: " + std::to_string(note.task_account_ptr->account_id) + ", проверка остановлена");
+
+		return;
+	}
+	else {
+		std::string tmp_output;
+
+		std::ifstream tmp_file(dir_path_str + "Judge_test\\output.txt", std::ios::in | std::ios::ate);
+
+		uint32_t f_len = tmp_file.tellg();
+		tmp_file.seekg(0);
+
+		tmp_output.resize(f_len);
+		tmp_file.read(&tmp_output[0], f_len);
+
+		tmp_file.close();
+
+		if (tmp_output.length() == note.task_ptr->output_file.length() + 1) {
+			// скорее всего в конце осталася '\n'
+			tmp_output.pop_back();
+
+			if (tmp_output == note.task_ptr->output_file) {
+				// верно
+				note.cheack_ptr->is_good = true;
+				note.cheack_ptr->info = "все окей";
+				note.cheack_ptr->cpu_time_ms = j_res.time_ms;
+				note.cheack_ptr->memory_bytes = j_res.peak_memory;
+
+				JudgeInsertResults(note);
+
+				logs.insert(EL_JUDGE, "Верный ответ от студента: " + std::to_string(note.task_account_ptr->account_id));
+
+				return;
+			}
+			else {
+				// неверно
+				note.cheack_ptr->is_good = true;
+				note.cheack_ptr->info = "Неверный ответ";
+				note.cheack_ptr->cpu_time_ms = j_res.time_ms;
+				note.cheack_ptr->memory_bytes = j_res.peak_memory;
+
+				JudgeInsertResults(note);
+
+				logs.insert(EL_JUDGE, "Неверный ответ от студента: " + std::to_string(note.task_account_ptr->account_id) + ", проверка остановлена");
+
+				return;
+			}
+		}
+		else if (tmp_output.length() == note.task_ptr->output_file.length()) {
+			if (tmp_output == note.task_ptr->output_file) {
+				// верно
+				note.cheack_ptr->is_good = true;
+				note.cheack_ptr->info = "все окей";
+				note.cheack_ptr->cpu_time_ms = j_res.time_ms;
+				note.cheack_ptr->memory_bytes = j_res.peak_memory;
+
+				JudgeInsertResults(note);
+
+				logs.insert(EL_JUDGE, "Верный ответ от студента: " + std::to_string(note.task_account_ptr->account_id));
+
+				return;
+			}
+			else {
+				// неверно
+				note.cheack_ptr->is_good = true;
+				note.cheack_ptr->info = "Неверный ответ";
+				note.cheack_ptr->cpu_time_ms = j_res.time_ms;
+				note.cheack_ptr->memory_bytes = j_res.peak_memory;
+
+				JudgeInsertResults(note);
+
+				logs.insert(EL_JUDGE, "Неверный ответ от студента: " + std::to_string(note.task_account_ptr->account_id) + ", проверка остановлена");
+
+				return;
+			}
+		}
+		else {
+			// не совпадает длина
+			note.cheack_ptr->is_good = false;
+			note.cheack_ptr->info = "Неверный ответ (длина)";
+			note.cheack_ptr->cpu_time_ms = j_res.time_ms;
+			note.cheack_ptr->memory_bytes = j_res.peak_memory;
+
+			JudgeInsertResults(note);
+
+			logs.insert(EL_JUDGE, "Неверный ответ (длина) от студента: " + std::to_string(note.task_account_ptr->account_id) + ", проверка остановлена");
+
+			return;
+		}
+	}
+
+	JudgeInsertResults(note);	// на всякий 
+}
+
+judge_run_result RunExeWithLimits(const std::string& exe_path, const std::string& working_dir_path, const std::string& input_file, const std::string& output_file, int time_limit_ms, uint32_t memory_limit_bytes) {
+	judge_run_result res{};
+	res.success = false;
+	res.timeout = false;
+	res.memlimit = false;
+	res.exit_code = 0;
+	res.peak_memory = 0;
+	res.time_ms = 0.0;
+
+	//открываем input.txt (stdin)
+	HANDLE hIn = CreateFileA(
+		input_file.c_str(),
+		GENERIC_READ,
+		FILE_SHARE_READ,
+		NULL,
+		OPEN_EXISTING,
+		FILE_ATTRIBUTE_NORMAL,
+		NULL
+	);
+
+	if (hIn == INVALID_HANDLE_VALUE) {
+		return res;
+	}
+
+	// открываем output.txt (stdout + stderr)
+	HANDLE hOut = CreateFileA(
+		output_file.c_str(),
+		GENERIC_WRITE,
+		FILE_SHARE_READ,
+		NULL,
+		CREATE_ALWAYS,
+		FILE_ATTRIBUTE_NORMAL,
+		NULL
+	);
+
+	if (hOut == INVALID_HANDLE_VALUE) {
+		CloseHandle(hIn);
+		return res;
+	}
+
+	//настройка STARTUPINFO
+	STARTUPINFOA si{};
+	si.cb = sizeof(si);
+	si.dwFlags = STARTF_USESTDHANDLES;
+	si.hStdInput = hIn;
+	si.hStdOutput = hOut;
+	si.hStdError = hOut;
+
+	PROCESS_INFORMATION pi{};
+
+	//создаём JobObject для лимита памяти
+	HANDLE hJob = CreateJobObjectA(NULL, NULL);
+	if (!hJob) {
+		CloseHandle(hIn);
+		CloseHandle(hOut);
+		return res;
+	}
+
+	JOBOBJECT_EXTENDED_LIMIT_INFORMATION jeli{};
+	jeli.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_PROCESS_MEMORY;
+	jeli.ProcessMemoryLimit = memory_limit_bytes;
+
+	if (!SetInformationJobObject(
+		hJob,
+		JobObjectExtendedLimitInformation,
+		&jeli,
+		sizeof(jeli)))
+	{
+		CloseHandle(hJob);
+		CloseHandle(hIn);
+		CloseHandle(hOut);
+		return res;
+	}
+
+	//формируем команду
+	std::string cmd = "\"" + exe_path + "\"";
+
+	//создаём процесс (сначала в suspend)
+	if (!CreateProcessA(
+		NULL,
+		cmd.data(),
+		NULL, NULL,
+		TRUE,              // наследуем stdin/stdout/stderr
+		CREATE_SUSPENDED,
+		NULL,
+		working_dir_path.c_str(), // рабочая директория = папка теста
+		&si, &pi
+	)) {
+		CloseHandle(hJob);
+		CloseHandle(hIn);
+		CloseHandle(hOut);
+		return res;
+	}
+
+	//привязываем процесс к JobObject
+	AssignProcessToJobObject(hJob, pi.hProcess);
+
+	//запускаем выполнение
+	ResumeThread(pi.hThread);
+
+	DWORD start = GetTickCount();
+	PROCESS_MEMORY_COUNTERS pmc{};
+
+	//(основной цикл контроля)
+	while (true) {
+		DWORD now = GetTickCount();
+		res.time_ms = now - start;
+
+		//проверка тайм-аута
+		if (res.time_ms > time_limit_ms) {
+			res.timeout = true;
+			TerminateJobObject(hJob, 1);
+			break;
+		}
+
+		//проверка памяти
+		if (GetProcessMemoryInfo(pi.hProcess, &pmc, sizeof(pmc))) {
+			res.peak_memory = max(res.peak_memory, (size_t)pmc.PeakWorkingSetSize);
+
+			if (pmc.WorkingSetSize > memory_limit_bytes) {
+				res.memlimit = true;
+				TerminateJobObject(hJob, 1);
+				break;
+			}
+		}
+
+		//проверка завершения процесса
+		DWORD code = STILL_ACTIVE;
+		GetExitCodeProcess(pi.hProcess, &code);
+
+		if (code != STILL_ACTIVE) {
+			res.exit_code = code;
+			res.success = (!res.timeout && !res.memlimit);
+			break;
+		}
+
+		Sleep(1); // CPU скажет асаламалейкум
+	}
+
+	//чистим ресурсы
+	CloseHandle(pi.hThread);
+	CloseHandle(pi.hProcess);
+	CloseHandle(hJob);
+
+	CloseHandle(hIn);
+	CloseHandle(hOut);
+
+	return res;
 }
 
 void JudgeInsertResults(const qudge_queue_note& note) {
@@ -1899,6 +2201,7 @@ bool ProcessSendSolutonMessage(const MsgHead& msg_header, const std::vector<char
 		qudge_queue_note tmp_note;
 		tmp_note.cheack_ptr = cheack_ptr;
 		tmp_note.task_account_ptr = (*it);
+		tmp_note.task_ptr = server.all_tasks[task_id];
 
 		server.judge_queue.push(tmp_note);
 	}
@@ -2456,6 +2759,7 @@ bool ServerData::__read_from_file_all_tasks__() {
 						qudge_queue_note tmp_note;
 						tmp_note.cheack_ptr = tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h];
 						tmp_note.task_account_ptr = tmp_all_tasks[i]->checked_accounts[g];
+						tmp_note.task_ptr = tmp_all_tasks[i];
 
 						judge_queue.push(tmp_note);
 					}

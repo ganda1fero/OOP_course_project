@@ -4,10 +4,9 @@
 
 #include <WinSock2.h>
 #include <ws2tcpip.h>
-#include <Windows.h>
 
-#include "ServerLogic.h"
 #include "EasyMenu.h"
+#include "ServerLogic.h"
 #include "EasyLogs.h"
 #include "ServerMenues.h"
 
@@ -51,7 +50,7 @@ int main() {
 	server.set_state(-1);// дали команду закрыть сервер
 
 	door_thread.join();	// ждем завершения потока двери
-	judge_thread.join();
+	judge_thread.join();// ждем заверения работы потока джаджа
 
 	server.SaveToFile();
 

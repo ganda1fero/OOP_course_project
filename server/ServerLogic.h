@@ -23,6 +23,10 @@
 #include <ws2tcpip.h>  // для getaddrinfo, freeaddrinfo
 #pragma comment(lib, "ws2_32.lib") // доподключаем реализацию библиотеку WSA
 
+#include <Windows.h>
+#include <Psapi.h>
+#pragma comment(lib, "Psapi.lib")
+
 #include "EasyLogs.h"
 
 //---------------------------------------------------------- объявление классов / структур
@@ -95,6 +99,17 @@ struct qudge_queue_note {
 	id_cheack* task_account_ptr{ nullptr };
 
 	cheacks* cheack_ptr{ nullptr };
+
+	task_note* task_ptr{ nullptr };
+};
+
+struct judge_run_result {
+	bool success;		// Завершился корректно?
+	bool timeout;		// Превышено время
+	bool memlimit;		// Превышена память
+	DWORD exit_code;    // Код возврата программы
+	size_t peak_memory; // Пиковое потребление
+	double time_ms;     // Время выполнения
 };
 
 
@@ -177,6 +192,7 @@ private:
 
 void JudgeMain(EasyLogs& logs, ServerData& server);
 void JudgeCheak(EasyLogs& logs, const qudge_queue_note& note);
+judge_run_result RunExeWithLimits(const std::string& exe_path, const std::string& working_dir_path, const std::string& input_file, const std::string& output_file, int time_limit_ms, uint32_t memory_limit_bytes);
 void JudgeInsertResults(const qudge_queue_note& note);
 
 bool SetupServer(SOCKET& door_sock, EasyLogs& logs);
