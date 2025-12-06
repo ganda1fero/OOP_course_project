@@ -43,13 +43,15 @@ int main() {
 	logs.insert(EL_SYSTEM, "Найдено заданий: " + std::to_string(server.get_count_of_all_tasks()));
 	
 	std::thread door_thread(ServerMain, std::ref(door_sock), std::ref(logs), std::ref(server));	// открыли поток
-	
+	std::thread judge_thread(JudgeMain, std::ref(logs), std::ref(server));	// открыли поток проверки (judge)
+
 	ServerMenu(server, logs);	// выполняем логику меню
 
 	// закрытие всего
 	server.set_state(-1);// дали команду закрыть сервер
 
 	door_thread.join();	// ждем завершения потока двери
+	judge_thread.join();
 
 	server.SaveToFile();
 

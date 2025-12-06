@@ -12,10 +12,142 @@
 #define CHANGE_TASK 103
 #define CHANGE_PASSWORD 5
 #define GET_ALL_SOLUTIONS 77
+#define SEND_SOLUTION 90
 
 #include "ServerLogic.h"
 
 //---------------------------------------------------------- функции
+
+void JudgeMain(EasyLogs& logs, ServerData& server) {
+	qudge_queue_note tmp_note;
+	bool is_empty{ true };
+
+	while (true) {	// бесконечный поток
+		if (server.get_state() == -1)
+			break;
+
+		{	// чтобы не было долгой блокироваки - записываем в отедельную переменную
+			std::lock_guard<std::mutex> lock(server.judge_queue_mutex);
+
+			is_empty = server.judge_queue.empty();
+		}
+
+		if (is_empty == false) {	// значит есть что проверить
+			tmp_note = server.judge_queue.front();
+
+			JudgeCheak(logs, tmp_note);
+
+			server.judge_queue.pop();	// очистили первый элемент
+		}
+		else
+			Sleep(100);	// кидаем поток в сон
+	}
+
+	logs.insert(EL_SYSTEM, EL_JUDGE, "Джадж остановлен");	
+}
+
+void JudgeCheak(EasyLogs& logs, const qudge_queue_note& note) {
+	logs.insert(EL_JUDGE, "Начало проверки задания студента: " + std::to_string(note.task_account_ptr->account_id));
+
+	const std::string dir_path_str = GetAppDirectory() + '\\';
+	const std::filesystem::path dir_path = dir_path_str;
+
+	// подготовка к тестированию
+	std::filesystem::path folder_path = "Judge_test\\";
+	if (std::filesystem::create_directories(folder_path) == true) // создали папку для тестов если ее не было
+		logs.insert(EL_SECURITY, EL_JUDGE, "Папка для тестов отсутвует, создаю новую");
+
+	//
+	std::filesystem::path cpp_path = dir_path / note.cheack_ptr->cpp_file;
+	std::filesystem::path exe_path = dir_path / "Judge_test" / "solution.exe";
+	std::filesystem::path log_path = dir_path / "Judge_test" / "compile_log.txt";
+	//
+	std::string cpp_path_str = cpp_path.string();
+	std::string exe_path_str = exe_path.string();
+	std::string log_path_str = log_path.string();
+	//
+	std::replace(cpp_path_str.begin(), cpp_path_str.end(), '\\', '/');
+	std::replace(exe_path_str.begin(), exe_path_str.end(), '\\', '/');
+	std::replace(log_path_str.begin(), log_path_str.end(), '\\', '/');
+	//
+	
+	int result;
+	{
+		std::string cmd = "g++ \"" + cpp_path_str + "\" -O2 -std=c++17 -o \"" + exe_path_str + "\" 2> \"" + log_path_str + "\"";
+		
+		result = std::system(cmd.c_str());
+	}
+	if (result != 0) {	// значит произошла ошибка 
+		note.cheack_ptr->is_good = false;
+		note.cheack_ptr->info = "Ошибка компиляции";
+		note.cheack_ptr->cpu_time_ms = 0;
+		note.cheack_ptr->memory_bytes = 0;
+		
+		JudgeInsertResults(note);
+
+		logs.insert(EL_JUDGE, "Ошибка компиляции задания студента: " + std::to_string(note.task_account_ptr->account_id) + ", проверка остановлена");
+
+		return;	// выходим, т.к была ошибка
+	}
+	
+
+}
+
+void JudgeInsertResults(const qudge_queue_note& note) {
+	// удаляем указатель из (ожтдающих проверку)
+
+	cheacks* tmp_ptr = note.cheack_ptr;
+
+	note.task_account_ptr->needs_cheack.erase(std::remove_if(note.task_account_ptr->needs_cheack.begin(), note.task_account_ptr->needs_cheack.end(), [tmp_ptr](const cheacks* ptr) {
+		return ptr == tmp_ptr;
+		}), note.task_account_ptr->needs_cheack.end());
+
+	// вставляем указатель в проверенные, перемещая файл и переименовывая:
+	std::string attemp;	// название нового файла
+	if (note.task_account_ptr->all_tryes.size() >= 10) {
+		// необходимо освободить номер самого плохого решения
+		std::string tmp_str = note.task_account_ptr->all_tryes[note.task_account_ptr->all_tryes.size() - 1]->cpp_file;
+		attemp = "attemp" + tmp_str.substr(tmp_str.length() - 2, 2) + ".cpp";	// получили название
+
+		note.task_account_ptr->all_tryes.pop_back();	// очистили худшее решение
+	}
+	else {
+		attemp = std::to_string(note.task_account_ptr->all_tryes.size() + 1);	// назначаем следующий номер
+		if (attemp.length() < 2)
+			attemp = '0' + attemp;
+
+		attemp = "attemp" + attemp + ".cpp";
+	}
+
+	std::filesystem::path prev_path = note.cheack_ptr->cpp_file;	// путь временого файла (с его особым названием)
+	std::filesystem::path new_path = prev_path.parent_path() / attemp;	// новый путь (с новым названием (типо утвержденным))
+
+	if (std::filesystem::exists(new_path))
+		std::filesystem::remove(new_path);
+
+	std::filesystem::rename(prev_path, new_path);	// переместили файл, переименовав его
+
+	note.cheack_ptr->cpp_file = new_path.string();
+
+	// заносим в статистику (учитывая правила)
+	auto it = std::lower_bound(note.task_account_ptr->all_tryes.begin(), note.task_account_ptr->all_tryes.end(), note.cheack_ptr, [](const cheacks* first_ptr, const cheacks* second_ptr) {
+		if (first_ptr->is_good == second_ptr->is_good) {
+			if (first_ptr->cpu_time_ms == second_ptr->cpu_time_ms) {
+				if (first_ptr->memory_bytes == second_ptr->memory_bytes) {
+					return first_ptr->send_time < second_ptr->send_time;	// первее, что раньше отправлено
+				}
+				else
+					return first_ptr->memory_bytes < second_ptr->memory_bytes;	// первее с меншей памятья
+			}
+			else
+				return first_ptr->cpu_time_ms < second_ptr->cpu_time_ms;	// первее с меньшим временем
+		}
+		else
+			return first_ptr->is_good > second_ptr->is_good;	// первее стоят 'true'
+		});	// получили иттератор, который >= или == (сюда вствляем новые знач (чтобы сохранить сортировку))
+
+	note.task_account_ptr->all_tryes.insert(it, note.cheack_ptr);	// вставили значение
+}
 
 bool SetupServer(SOCKET& door_sock, EasyLogs& logs) {
 	logs.insert(EL_SYSTEM, EL_NETWORK, "Запуск сервера...");
@@ -947,6 +1079,32 @@ void CreateGetAllSolutionsMessage(std::vector<char>& vect, const std::vector<che
 	vect.insert(vect.end(), main_data.begin(), main_data.end());
 }
 
+void CreateConfirmSolutionMessage(std::vector<char>& vect) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+	unsigned char uchar_buffer;
+	char* tmp_ptr;
+
+	// сразу заполняем сообщение (main_data пуста)
+	vect.clear();
+
+	uchar_buffer = FROM_SERVER;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = SEND_SOLUTION;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 1;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = 0;	// NULL
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+}
+
 bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
 	if (msg_header.first_code != FROM_CLIENT) {
 		std::string tmp_str{ "Ошибка первичного кода сообщения от " };
@@ -989,6 +1147,9 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 		break;
 	case GET_ALL_SOLUTIONS:
 		return ProcessGetAllSolutionsMessage(msg_header, recv_buffer, connection_ptr, server, logs);
+		break;
+	case SEND_SOLUTION:
+		return ProcessSendSolutonMessage(msg_header, recv_buffer, connection_ptr, server, logs);
 		break;
 	default:	// заглушка для неизвестных
 		std::string tmp_str{ "Неизвестный вторичный код сообщения от " };
@@ -1644,6 +1805,120 @@ bool ProcessGetAllSolutionsMessage(const MsgHead& msg_header, const std::vector<
 	return SendTo(connection_ptr, data, logs);
 }
 
+bool ProcessSendSolutonMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
+	if (connection_ptr == nullptr || connection_ptr->account_ptr == nullptr) {
+		logs.insert(EL_ERROR, EL_ACTION, "Ошибка принятия на проверку от: " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	if (connection_ptr->account_ptr->role != USER_ROLE) {
+		logs.insert(EL_ERROR, EL_ACTION, "Выход за границы роли от: " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	//	временные переменные
+	uint32_t uint32_t_buffer;
+	uint32_t task_id;
+	std::string cpp_file;
+
+	//	чтение сообщения
+	uint32_t index = msg_header.size_of();
+	try {
+		task_id = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		cpp_file.insert(cpp_file.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+	}
+	catch (...) {
+		logs.insert(EL_ERROR, EL_NETWORK, "Ошибка чтения запроса отправки задания на проверку от: " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	if (task_id > server.all_tasks.size() - 1) {
+		logs.insert(EL_ERROR, EL_ACTION, "Ошибка id task в запросе на проверку решения: " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	auto it = server.all_tasks[task_id]->checked_accounts.begin();
+	while (it != server.all_tasks[task_id]->checked_accounts.end()) {
+		if ((*it)->account_id == connection_ptr->account_ptr->id)
+			break;
+
+		it++;
+	}
+
+	if (it == server.all_tasks[task_id]->checked_accounts.end() || (*it)->account_id != connection_ptr->account_ptr->id) {
+		logs.insert(EL_ERROR, EL_ACTION, "Ошибка поиска аккаунта в запросе на проверку решения: " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	} // иначе иттератор it указывает на нужный аккаунт
+
+	// сообщение успшно прочитали => добавляем в очередь (как в локальную, так и в проверяющем потоке)
+	cheacks* cheack_ptr = new cheacks;
+
+	cheack_ptr->send_time = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());	// записали время принятия задания
+
+	// добавляем файл в систему и записываем его путь
+	{
+		std::string file_path = server.all_tasks[task_id]->task_name + '\\' + std::to_string((*it)->account_id);
+		std::filesystem::path tmp_path = file_path;
+		std::filesystem::create_directories(tmp_path); // создали папку, если ее не было
+
+		std::string tmp_time_str;
+		tm tmp_tm;
+		localtime_s(&tmp_tm, &cheack_ptr->send_time);
+
+		file_path += '\\' + (((tmp_tm.tm_hour < 10) ? "0" : "") + std::to_string(tmp_tm.tm_hour)) + '-' + (((tmp_tm.tm_min < 10) ? "0" : "") + std::to_string(tmp_tm.tm_min)) + '-' + (((tmp_tm.tm_sec < 10) ? "0" : "") + std::to_string(tmp_tm.tm_sec)) + ".cpp";
+
+		std::ofstream tmp_file(file_path, std::ios::trunc | std::ios::out);
+
+		if (tmp_file.is_open() == false) {
+			logs.insert(EL_ERROR, EL_ACTION, "Ошибка создания файла .cpp для проверки от: " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+			
+			delete cheack_ptr;
+
+			return false;
+		}
+
+		tmp_file << cpp_file;
+
+		tmp_file.close();
+
+		cheack_ptr->cpp_file = file_path;
+	}
+
+	// добавляем в ожидание (локальное для пользователя)
+	(*it)->needs_cheack.push_back(cheack_ptr);
+
+	// добавляем в очередь проверяющего
+	{
+		std::lock_guard<std::mutex> lock(server.judge_queue_mutex);
+
+		qudge_queue_note tmp_note;
+		tmp_note.cheack_ptr = cheack_ptr;
+		tmp_note.task_account_ptr = (*it);
+
+		server.judge_queue.push(tmp_note);
+	}
+
+	// делаем обратную связь
+	std::vector<char> data;
+
+	CreateConfirmSolutionMessage(data);
+
+	return SendTo(connection_ptr, data, logs);
+}
+
+std::string GetAppDirectory() {
+	char path[MAX_PATH];
+	GetModuleFileNameA(nullptr, path, MAX_PATH);
+	std::string dir(path);
+	size_t pos = dir.find_last_of("\\/");
+	return dir.substr(0, pos);
+}
+
 //---------------------------------------------------------- методы классов
 
 //---------------------- MsgHead
@@ -2059,6 +2334,11 @@ void ServerData::__clear_all_tasks__() {
 						}
 					}
 
+					for (uint32_t h{ 0 }; h < all_tasks[i]->checked_accounts[g]->needs_cheack.size(); h++) {
+						if (all_tasks[i]->checked_accounts[g]->needs_cheack[h] != nullptr)
+							delete all_tasks[i]->checked_accounts[g]->needs_cheack[h];
+					}
+
 					delete all_tasks[i]->checked_accounts[g];
 				}
 			}
@@ -2144,6 +2424,41 @@ bool ServerData::__read_from_file_all_tasks__() {
 
 					file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->memory_bytes), sizeof(uint32_t));
 					file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->cpu_time_ms), sizeof(uint32_t));
+				}
+
+				file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t_buffer));
+				tmp_all_tasks[i]->checked_accounts[g]->needs_cheack.resize(uint32_t_buffer);
+
+				for (uint32_t h{ 0 }; h < tmp_all_tasks[i]->checked_accounts[g]->needs_cheack.size(); h++) {
+					tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h] = new cheacks;
+
+					file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->is_good), sizeof(bool));
+
+					file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->send_time), sizeof(time_t));
+
+					file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+					tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->info.resize(uint32_t_buffer);
+
+					file.read(&tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[g]->info[0], tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[g]->info.size());
+
+					file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+					tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->cpp_file.resize(uint32_t_buffer);
+
+					file.read(&tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->cpp_file[0], tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->cpp_file.size());
+
+					file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->memory_bytes), sizeof(uint32_t));
+					file.read(reinterpret_cast<char*>(&tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->cpu_time_ms), sizeof(uint32_t));
+
+					// сразу добавляем в очередь judge
+					{
+						std::lock_guard<std::mutex> lock_judge(judge_queue_mutex);
+						
+						qudge_queue_note tmp_note;
+						tmp_note.cheack_ptr = tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h];
+						tmp_note.task_account_ptr = tmp_all_tasks[i]->checked_accounts[g];
+
+						judge_queue.push(tmp_note);
+					}
 				}
 			}
 		}
@@ -2249,6 +2564,33 @@ void ServerData::__save_to_file_all_tasks__() {
 				file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
 
 				uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->cpu_time_ms;
+				file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+			}
+
+			uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g]->needs_cheack.size();
+			file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+
+			for (uint32_t h{ 0 }; h < tmp_all_tasks[i]->checked_accounts[g]->needs_cheack.size(); h++) {
+				bool_buffer = tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->is_good;
+				file.write(reinterpret_cast<char*>(&bool_buffer), sizeof(bool));
+
+				time_t_buffer = tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->send_time;
+				file.write(reinterpret_cast<char*>(&time_t_buffer), sizeof(time_t));
+
+				uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->info.length();
+				file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+
+				file.write(&tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->info[0], tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->info.size());
+
+				uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->cpp_file.length();
+				file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+
+				file.write(&tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->cpp_file[0], tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->cpp_file.size());
+
+				uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->memory_bytes;
+				file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
+
+				uint32_t_buffer = tmp_all_tasks[i]->checked_accounts[g]->needs_cheack[h]->cpu_time_ms;
 				file.write(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
 			}
 		}

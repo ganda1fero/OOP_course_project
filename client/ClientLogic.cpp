@@ -14,6 +14,7 @@
 #define CHANGE_TASK 103
 #define CHANGE_PASSWORD 5
 #define GET_ALL_SOLUTIONS 77
+#define SEND_SOLUTION 90
 
 // методы классов
 
@@ -302,7 +303,23 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 			switch (pressed_but)
 			{
 			case 0:	// добавить решение (отправить решение)
+				if (StudentSendSolutionMenu(client_data)) {
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
 
+					client_data.menu_.set_notification(5, "(В обработке...)");
+					client_data.menu_.set_notification_color(5, YELLOW_COLOR);
+
+					client_data.menu_.advanced_clear_console();
+					client_data.menu_.advanced_display_menu();
+				}
+				else {
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+					client_data.menu_.delete_all_notifications();
+
+					client_data.menu_.advanced_clear_console();
+					client_data.menu_.advanced_display_menu();
+				}
 				break;
 			case 1:	// назад
 				{
@@ -825,6 +842,9 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 	case GET_ALL_SOLUTIONS:
 		return GetAllSolutions(msg_header, recv_buffer, client_data);
 		break;
+	case SEND_SOLUTION:
+		return SendSolutionConfirm(msg_header, recv_buffer, client_data);
+		break;
 	default:
 		return false;	// неизвестная команда
 		break;
@@ -1331,6 +1351,31 @@ bool GetAllSolutions(const MsgHead& msg_header, const std::vector<char>& recv_bu
 	StudentGetAllSolutions<solution_note>(client_data, task_index, task_name, task_info, time_limit_ms, memory_limit_ms, is_done, solutions, msg_header.third_code);
 
 	return true;
+}
+
+bool SendSolutionConfirm(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+
+	// чтение сообщения так таковое не требуется (оно пустое)
+	switch (msg_header.third_code)
+	{
+	case 1:
+		if (client_data.screen_info_.role == STUDENT_ROLE && client_data.screen_info_.type == 3) {
+			std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+			client_data.menu_.set_notification(5, "(Задание принято)");
+			client_data.menu_.set_notification_color(5, LIGHT_GREEN_COLOR);
+
+			client_data.menu_.advanced_clear_console();
+			client_data.menu_.advanced_display_menu();
+		}
+
+		return true;
+		break;
+	}
+
+	return false;
 }
 
 void AuthorisationMenu(Client_data& client_data, std::string text) {
@@ -1946,6 +1991,104 @@ template <typename T> void StudentGetAllSolutions(Client_data& client_data, cons
 	client_data.screen_info_.role = STUDENT_ROLE;
 }	
 
+bool StudentSendSolutionMenu(Client_data& client_data) {
+	{
+		std::lock_guard<std::mutex> lock(client_data.screen_info_mutex);
+
+		client_data.screen_info_.type = 200;
+	}
+
+	std::string cpp_file;
+	
+	EasyMenu tmp_menu;
+	tmp_menu.set_info("Отправка задания");
+	tmp_menu.set_info_main_color(LIGHT_YELLOW_COLOR);
+
+	tmp_menu.push_back_text("Принимаются только файлы .cpp");
+
+	tmp_menu.push_back_butt("Выбрать файл");
+	tmp_menu.set_notification(1, "(Файл не выбран)");
+
+	tmp_menu.push_back_butt("Отправить");
+
+	tmp_menu.push_back_butt("Назад");
+	tmp_menu.set_color(3, BLUE_COLOR);
+
+	while (true) {
+		switch (tmp_menu.easy_run())
+		{
+		case 0:	// выбрать файл
+			{
+				std::string tmp_str = WstrToStr(OpenFileDialogCPP());
+				if (tmp_str.empty() == false) {
+					std::ifstream file(tmp_str);
+
+					if (file.is_open() == false) {
+						tmp_menu.set_notification(1, "Не удалось открыть выбранный файл!");
+						tmp_menu.set_notification_color(1, RED_COLOR);
+					}
+					else {
+						std::ostringstream buffer;
+						buffer << file.rdbuf(); // считывает весь поток
+
+						cpp_file.clear();
+						cpp_file = buffer.str();
+
+						tmp_menu.set_notification(1, tmp_str + " -> " + std::to_string(cpp_file.length()) + " байтов");
+						tmp_menu.set_notification_color(1, GREEN_COLOR);
+
+						file.close();
+					}
+				}
+			}
+			break;
+		case 1:	// отправить
+			if (cpp_file.empty()) {
+				tmp_menu.set_notification(2, "(Файл пустой!)");
+				tmp_menu.set_notification_color(2, RED_COLOR);
+				break;
+			}
+			if (cpp_file.length() < 9) {
+				tmp_menu.set_notification(2, "(Файл не может быть меньше 9 байт!)");
+				tmp_menu.set_notification_color(2, RED_COLOR);
+				break;
+			}
+
+			// значит можем отправлять
+			{
+				std::vector<char> data;
+				
+				CreateSendSolutionMessage(data, cpp_file, client_data.screen_info_.id / 1000);
+
+				SendTo(client_data, data);
+
+				{
+					std::lock_guard<std::mutex> lock(client_data.screen_info_mutex);
+
+					if (client_data.screen_info_.role == STUDENT_ROLE && client_data.screen_info_.type == 200) {
+						client_data.screen_info_.type = 3;
+					}
+				}
+
+				return true;
+			}
+			break;
+		case 2:	// назад
+			{
+				std::lock_guard<std::mutex> lock(client_data.screen_info_mutex);
+
+				if (client_data.screen_info_.role == STUDENT_ROLE && client_data.screen_info_.type == 200) {
+					client_data.screen_info_.type = 3;
+				}
+			}
+			return false;
+			break;
+		}
+	}
+
+	return false;	// заглушка
+}
+
 void SettingsMenu(Client_data& client_data) {
 
 	std::lock_guard<std::mutex> lock(client_data.menu_mutex);
@@ -2538,6 +2681,47 @@ void CreateGetAllSolutionsMessage(std::vector<char>& vect, const uint32_t& task_
 	vect.insert(vect.end(), main_data.begin(), main_data.end());
 }
 
+void CreateSendSolutionMessage(std::vector<char>& vect, const std::string& cpp_file_data, const uint32_t task_id) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+	char* tmp_ptr;
+	unsigned char uchar_buffer;
+
+	std::vector<char> main_data;
+
+	// составляем main_data
+	uint32_t_buffer = task_id;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = cpp_file_data.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), cpp_file_data.begin(), cpp_file_data.end());
+
+	// составляем все сообщение
+	vect.clear();
+
+	uchar_buffer = FROM_CLIENT;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = SEND_SOLUTION;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 0;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = main_data.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
 //перифирия-------------------------------------------------------
 std::string WstrToStr(const std::wstring& wstr)
 {
@@ -2559,6 +2743,28 @@ std::wstring OpenFileDialog()
 	ofn.lpstrFile = szFile;
 	ofn.nMaxFile = sizeof(szFile);
 	ofn.lpstrFilter = L"Text Files\0*.txt\0All Files\0*.*\0";
+	ofn.nFilterIndex = 1;
+	ofn.lpstrFileTitle = nullptr;
+	ofn.nMaxFileTitle = 0;
+	ofn.lpstrInitialDir = nullptr;
+	ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+	if (GetOpenFileNameW(&ofn))
+		return std::wstring(ofn.lpstrFile);
+
+	return L"";
+}
+
+std::wstring OpenFileDialogCPP() {
+	OPENFILENAMEW ofn;
+	WCHAR szFile[260] = { 0 };
+
+	ZeroMemory(&ofn, sizeof(ofn));
+	ofn.lStructSize = sizeof(ofn);
+	ofn.hwndOwner = nullptr;
+	ofn.lpstrFile = szFile;
+	ofn.nMaxFile = sizeof(szFile);
+	ofn.lpstrFilter = L"Text Files\0*.cpp\0All Files\0*.*\0";
 	ofn.nFilterIndex = 1;
 	ofn.lpstrFileTitle = nullptr;
 	ofn.nMaxFileTitle = 0;
