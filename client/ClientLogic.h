@@ -110,6 +110,10 @@ bool FailChangePassword(const MsgHead& msg_header, const std::vector<char>& recv
 
 bool GetAllSolutions(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
 
+bool SendSolutionConfirm(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
+
+bool GetSolution(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
+
 // менюшки
 void AuthorisationMenu(Client_data& client_data, std::string text);
 
@@ -123,6 +127,8 @@ bool TeacherChangeTaskMenu(Client_data& client_data, uint32_t& butt_index, std::
 void StudentMenu(Client_data& client_data, std::string text);
 void StudentAlltasks(Client_data& client_data, const std::vector<std::string>& buttons, const std::vector<bool>& buttons_status);
 template <typename T> void StudentGetAllSolutions(Client_data& client_data, const uint32_t& task_index, const std::string& task_name, const std::string& task_info, const uint32_t& time_limit_ms, const uint32_t& memory_limit_kb, const bool& is_done, const std::vector<T>& solutions, const uint32_t& sort_type);
+bool StudentSendSolutionMenu(Client_data& client_data);
+void StudentOpenSolutionMenu(Client_data& client_data, const bool& is_good, const time_t& send_time, const std::string& info, const uint32_t& used_time_ms, const uint32_t& time_limit_ms, const uint32_t& used_memory_kb, const uint32_t& memory_limit_kb, const uint32_t& screen_id);
 
 
 void SettingsMenu(Client_data& client_data);
@@ -150,9 +156,14 @@ void CreateChangePasswordMessage(std::vector<char>& vect, const std::string& pre
 
 void CreateGetAllSolutionsMessage(std::vector<char>& vect, const uint32_t& task_id, const uint32_t sort_type);
 
+void CreateSendSolutionMessage(std::vector<char>& vect, const std::string& cpp_file_data, const uint32_t task_id);
+
+void CreateGetSolutionMessage(std::vector<char>& vect, const uint32_t task_id, const uint32_t solution_id, const uint32_t sort_id);
+
 // перефирия
 std::string WstrToStr(const std::wstring& wstr);
 std::wstring OpenFileDialog();
+std::wstring OpenFileDialogCPP();
 
 std::string GetAppDirectory();
 void OpenFileForUser(const std::string& file_path);

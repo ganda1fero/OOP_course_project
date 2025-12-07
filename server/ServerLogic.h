@@ -10,16 +10,22 @@
 #define ADMIN_ROLE 3
 
 #include <iostream>
+#include <filesystem>
 #include <chrono>
 #include <thread>
 #include <functional>
 #include <mutex>
 #include <string>
 #include <algorithm>
+#include <queue>
 
 #include <WinSock2.h>
 #include <ws2tcpip.h>  // для getaddrinfo, freeaddrinfo
 #pragma comment(lib, "ws2_32.lib") // доподключаем реализацию библиотеку WSA
+
+#include <Windows.h>
+#include <Psapi.h>
+#pragma comment(lib, "Psapi.lib")
 
 #include "EasyLogs.h"
 
@@ -69,6 +75,8 @@ struct id_cheack
 	uint32_t account_id{ 0 };	// id аккаунта
 	
 	std::vector<cheacks*> all_tryes;	// все его попытки
+
+	std::vector<cheacks*> needs_cheack;	// непроверенный попытки
 };
 
 struct task_note {
@@ -84,6 +92,28 @@ struct task_note {
 
 	std::vector<id_cheack*> checked_accounts;	// все аккаунты и их попытки
 };
+
+//////////////////////////////////////////
+
+struct qudge_queue_note {
+	id_cheack* task_account_ptr{ nullptr };
+
+	cheacks* cheack_ptr{ nullptr };
+
+	task_note* task_ptr{ nullptr };
+
+	serv_connection* connection_ptr{ nullptr };
+};
+
+struct judge_run_result {
+	bool success;		// Завершился корректно?
+	bool timeout;		// Превышено время
+	bool memlimit;		// Превышена память
+	DWORD exit_code;    // Код возврата программы
+	size_t peak_memory; // Пиковое потребление
+	double time_ms;     // Время выполнения
+};
+
 
 //////////////////////////////////////////
 class MsgHead {
@@ -136,6 +166,11 @@ public:
 	bool __read_from_file_all_tasks__();
 	void __save_to_file_all_tasks__();
 
+	// джадж
+	std::mutex judge_queue_mutex;
+	std::queue<qudge_queue_note> judge_queue;
+
+
 private:
 	// поля
 	std::mutex state_mutex;
@@ -156,6 +191,11 @@ private:
 };
 
 //---------------------------------------------------------- объявление функций
+
+void JudgeMain(EasyLogs& logs, ServerData& server);
+void JudgeCheak(EasyLogs& logs, const qudge_queue_note& note);
+judge_run_result RunExeWithLimits(const std::string& exe_path, const std::string& working_dir_path, const std::string& input_file, const std::string& output_file, int time_limit_ms, uint32_t memory_limit_bytes);
+void JudgeInsertResults(const qudge_queue_note& note);
 
 bool SetupServer(SOCKET& door_sock, EasyLogs& logs);
 
@@ -189,6 +229,11 @@ void CreateFailChangePasswordMessage(std::vector<char>& vect);
 
 void CreateGetAllSolutionsMessage(std::vector<char>& vect, const std::vector<cheacks*>& sorted_solutions, const uint32_t& task_id, const id_cheack* account_tryes_ptr, const uint32_t& sort_type, ServerData& server);
 
+void CreateConfirmSolutionMessage(std::vector<char>& vect);
+void CreateFinushCheackSolutionMessage(std::vector<char>& vect);
+
+void CreateGetSolutionMessage(std::vector<char>& vect, const uint32_t& task_id, const uint32_t& solution_id, const uint32_t& sort_id, const cheacks* solution_ptr, const task_note* task_ptr);
+
 
 //------------------(Функции чтения message)
 bool ProcessAuthorisationMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
@@ -202,5 +247,13 @@ bool ProcessGetChangeTaskMenuMessage(const MsgHead& msg_header, const std::vecto
 bool ProcessChangeThatTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessChangePasswordMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessGetAllSolutionsMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessSendSolutonMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessGetSolutionMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+
+
+//-----------------(Перифирия)
+std::string GetAppDirectory();
+std::string NormalizeOutput(const std::string& s);
+
 
 #endif
