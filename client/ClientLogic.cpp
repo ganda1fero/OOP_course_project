@@ -15,6 +15,7 @@
 #define CHANGE_PASSWORD 5
 #define GET_ALL_SOLUTIONS 77
 #define SEND_SOLUTION 90
+#define OPEN_SOLUTION 95
 
 // методы классов
 
@@ -315,7 +316,7 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 				else {
 					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
 
-					client_data.menu_.delete_all_notifications();
+					client_data.menu_.set_notification(5, "");
 
 					client_data.menu_.advanced_clear_console();
 					client_data.menu_.advanced_display_menu();
@@ -339,8 +340,44 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 			case 2:	// сортировать решения
 
 				break;
-			default: // выбрано какое-то решение (нужно pressed_but - 2)
+			default: // выбрано какое-то решение (нужно pressed_but - 3) => будет начинаться с 0 
+				{
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
 
+					client_data.menu_.set_notification(10 + (pressed_but - 3), "(В процессе...)");
+					client_data.menu_.set_notification_color(10 + (pressed_but - 3), YELLOW_COLOR);
+
+					client_data.menu_.advanced_clear_console();
+					client_data.menu_.advanced_display_menu();
+				}
+				{
+					std::vector<char> data;
+					CreateGetSolutionMessage(data, (client_data.screen_info_.id / 1000) - 1, pressed_but - 3, (client_data.screen_info_.id % 1000) - 1);
+					SendTo(client_data, data);
+				}
+				break;
+			}
+			break;
+		case 4:	// открытое решение
+			switch (pressed_but)
+			{
+			case 0:	// открыть файл
+
+				break;
+			case 1:	// назад
+				{
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+					client_data.menu_.set_notification(6, "(В процессе...)");
+
+					client_data.menu_.advanced_clear_console();
+					client_data.menu_.advanced_display_menu();
+				}
+				{
+					std::vector<char> data;
+					CreateGetAllSolutionsMessage(data, (client_data.screen_info_.id / 1000000) - 1, (client_data.screen_info_.id % 1000) - 1);
+					SendTo(client_data, data);
+				}
 				break;
 			}
 			break;
@@ -845,6 +882,9 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 	case SEND_SOLUTION:
 		return SendSolutionConfirm(msg_header, recv_buffer, client_data);
 		break;
+	case OPEN_SOLUTION:
+		return GetSolution(msg_header, recv_buffer, client_data);
+		break;
 	default:
 		return false;	// неизвестная команда
 		break;
@@ -1320,7 +1360,7 @@ bool GetAllSolutions(const MsgHead& msg_header, const std::vector<char>& recv_bu
 			solutions[0].time_ms = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
 			index += sizeof(uint32_t);
 
-			solutions[0].memory_kb = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+			solutions[0].memory_kb = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]) / 1024;
 			index += sizeof(uint32_t);
 		}
 
@@ -1339,7 +1379,7 @@ bool GetAllSolutions(const MsgHead& msg_header, const std::vector<char>& recv_bu
 			solutions[i].time_ms = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
 			index += sizeof(uint32_t);
 
-			solutions[i].memory_kb= *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+			solutions[i].memory_kb = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]) / 1024;
 			index += sizeof(uint32_t);
 		}
 	}
@@ -1360,7 +1400,7 @@ bool SendSolutionConfirm(const MsgHead& msg_header, const std::vector<char>& rec
 	// чтение сообщения так таковое не требуется (оно пустое)
 	switch (msg_header.third_code)
 	{
-	case 1:
+	case 1:	// подтвеждение принятия задания
 		if (client_data.screen_info_.role == STUDENT_ROLE && client_data.screen_info_.type == 3) {
 			std::lock_guard<std::mutex> lock(client_data.menu_mutex);
 
@@ -1373,9 +1413,76 @@ bool SendSolutionConfirm(const MsgHead& msg_header, const std::vector<char>& rec
 
 		return true;
 		break;
+	case 2:
+		if (client_data.screen_info_.role == STUDENT_ROLE && client_data.screen_info_.type == 3) {
+			std::vector<char> data;
+
+			CreateGetAllSolutionsMessage(data, (client_data.screen_info_.id / 1000) - 1, (client_data.screen_info_.id % 1000) - 1);
+
+			return SendTo(client_data, data);
+		}
+		break;
 	}
 
 	return false;
+}
+
+bool GetSolution(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+	uint32_t task_id, solution_id, sort_id;
+	bool is_good;
+	time_t send_time;
+	std::string info;
+	uint32_t used_time, time_limit, used_memory_kb, memory_limit_kb;
+
+
+	// чтение сообщения
+	uint32_t index = msg_header.size_of();
+	try {
+		task_id = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		solution_id = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		sort_id = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		is_good = *reinterpret_cast<const bool*>(&recv_buffer[index]);
+		index += sizeof(bool);
+
+		send_time = *reinterpret_cast<const time_t*>(&recv_buffer[index]);
+		index += sizeof(time_t);
+
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		info.insert(info.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		index += uint32_t_buffer;
+
+		used_time = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		time_limit = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		used_memory_kb = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]) / 1024;	// т.к хранится в байтах
+		index += sizeof(uint32_t);
+
+		memory_limit_kb = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+	}
+	catch (...) {
+		return false;
+	}
+
+	// => все прочиатли успешно, составляем меню
+	uint32_t new_screen_id = ((task_id + 1) * 1000000) + ((solution_id + 1) * 1000) + (sort_id + 1);	// task_id * млн + solution_id * тыс + sort_id
+
+	StudentOpenSolutionMenu(client_data, is_good, send_time, info, used_time, time_limit, used_memory_kb, memory_limit_kb, new_screen_id);
+
+	return true;
 }
 
 void AuthorisationMenu(Client_data& client_data, std::string text) {
@@ -1987,7 +2094,7 @@ template <typename T> void StudentGetAllSolutions(Client_data& client_data, cons
 	std::lock_guard<std::mutex> lock2(client_data.screen_info_mutex);
 
 	client_data.screen_info_.type = 3;
-	client_data.screen_info_.id = task_index * 1000 + sort_type;	// состои из (task_index * 1000) + sort_type
+	client_data.screen_info_.id = (task_index + 1) * 1000 + (sort_type + 1);	// состои из (task_index * 1000) + sort_type
 	client_data.screen_info_.role = STUDENT_ROLE;
 }	
 
@@ -2058,7 +2165,7 @@ bool StudentSendSolutionMenu(Client_data& client_data) {
 			{
 				std::vector<char> data;
 				
-				CreateSendSolutionMessage(data, cpp_file, client_data.screen_info_.id / 1000);
+				CreateSendSolutionMessage(data, cpp_file, (client_data.screen_info_.id / 1000) - 1);
 
 				SendTo(client_data, data);
 
@@ -2087,6 +2194,66 @@ bool StudentSendSolutionMenu(Client_data& client_data) {
 	}
 
 	return false;	// заглушка
+}
+
+void StudentOpenSolutionMenu(Client_data& client_data, const bool& is_good, const time_t& send_time, const std::string& info, const uint32_t& used_time_ms, const uint32_t& time_limit_ms, const uint32_t& used_memory_kb, const uint32_t& memory_limit_kb, const uint32_t& screen_id) {
+	std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+	client_data.menu_.clear();
+
+	client_data.menu_.set_info("Просмотр решения");
+	client_data.menu_.set_info_main_color(LIGHT_YELLOW_COLOR);
+
+	if (is_good) {
+		client_data.menu_.push_back_text("Результат: зачтено");
+		client_data.menu_.set_color(0, LIGHT_GREEN_COLOR);
+	}
+	else {
+		client_data.menu_.push_back_text("Результат: не зачтено");
+		client_data.menu_.set_color(0, RED_COLOR);
+	}
+
+	client_data.menu_.push_back_text("Время сдачи: " + StringFromTimeT(send_time));
+
+	client_data.menu_.push_back_text("Доп. информация: " + ((info.length() > 0) ? info : "----"));
+
+	client_data.menu_.push_back_text("Использовано времени: " + std::to_string(used_time_ms) + "мс из " + std::to_string(time_limit_ms) + "мс");
+	if (used_time_ms > time_limit_ms)
+		client_data.menu_.set_color(3, YELLOW_COLOR);
+	else
+		client_data.menu_.set_color(3, LIGHT_GRAY_COLOR);
+
+	std::string tmp_used_mem_str, tmp_mem_limit_str;
+	if (used_memory_kb > 1024)
+		tmp_used_mem_str = std::to_string(used_memory_kb / 1024) + '.' + std::to_string(used_memory_kb % 1024) + " Мб";
+	else
+		tmp_used_mem_str = std::to_string(used_memory_kb) + " Кб";
+	if (memory_limit_kb > 1024)
+		tmp_mem_limit_str = std::to_string(memory_limit_kb / 1024) + '.' + std::to_string(int(float(1024 / (memory_limit_kb % 1024)) * 10)) + " Мб";
+	else
+		tmp_mem_limit_str = std::to_string(memory_limit_kb) + " Кб";
+	client_data.menu_.push_back_text("Использовано памяти: " + tmp_used_mem_str + " из " + tmp_mem_limit_str);
+	if (used_memory_kb > memory_limit_kb)
+		client_data.menu_.set_color(4, YELLOW_COLOR);
+	else
+		client_data.menu_.set_color(4, LIGHT_GRAY_COLOR);
+
+	client_data.menu_.push_back_butt("Открыть решение");
+	client_data.menu_.set_notification(5, "(cpp файл)");
+	client_data.menu_.set_notification_color(5, LIGHT_GRAY_COLOR);
+
+	client_data.menu_.push_back_butt("Назад");
+	client_data.menu_.set_color(6, MAGENTA_COLOR);
+
+	//
+	client_data.menu_.advanced_clear_console();
+	client_data.menu_.advanced_display_menu();
+
+	std::lock_guard<std::mutex> lock2(client_data.screen_info_mutex);
+
+	client_data.screen_info_.type = 4;
+	client_data.screen_info_.id = screen_id;	// состоит из: 1.000.000 * task_id + 1.000 * solution_id + sort_id
+	client_data.screen_info_.role = STUDENT_ROLE;
 }
 
 void SettingsMenu(Client_data& client_data) {
@@ -2708,6 +2875,49 @@ void CreateSendSolutionMessage(std::vector<char>& vect, const std::string& cpp_f
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
 
 	uchar_buffer = SEND_SOLUTION;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 0;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = main_data.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
+void CreateGetSolutionMessage(std::vector<char>& vect, const uint32_t task_id, const uint32_t solution_id, const uint32_t sort_id) {
+	// временные переменныеы
+	uint32_t uint32_t_buffer;
+	char* tmp_ptr;
+	unsigned char uchar_buffer;
+
+	std::vector<char> main_data;
+
+	// заполнение main_data
+	uint32_t_buffer = task_id;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = solution_id;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = sort_id;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	// составаление всего сообщения
+	vect.clear();
+
+	uchar_buffer = FROM_CLIENT;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = OPEN_SOLUTION;
 	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
 

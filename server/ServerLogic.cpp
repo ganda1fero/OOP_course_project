@@ -13,6 +13,7 @@
 #define CHANGE_PASSWORD 5
 #define GET_ALL_SOLUTIONS 77
 #define SEND_SOLUTION 90
+#define OPEN_SOLUTION 95
 
 #include "ServerLogic.h"
 
@@ -37,6 +38,14 @@ void JudgeMain(EasyLogs& logs, ServerData& server) {
 
 			JudgeCheak(logs, tmp_note);
 
+			if (tmp_note.connection_ptr != nullptr && tmp_note.connection_ptr->account_ptr != nullptr)	{
+				std::vector<char> data;
+
+				CreateFinushCheackSolutionMessage(data);
+
+				SendTo(tmp_note.connection_ptr, data, logs);
+			}
+
 			server.judge_queue.pop();	// очистили первый элемент
 		}
 		else
@@ -49,7 +58,7 @@ void JudgeMain(EasyLogs& logs, ServerData& server) {
 void JudgeCheak(EasyLogs& logs, const qudge_queue_note& note) {
 	logs.insert(EL_JUDGE, "Начало проверки задания студента: " + std::to_string(note.task_account_ptr->account_id));
 
-	const std::string dir_path_str = GetAppDirectory() + '\\';
+	const std::string dir_path_str = GetAppDirectory() + '\\';	// путь до папки server.exe
 	const std::filesystem::path dir_path = dir_path_str;
 
 	// подготовка к тестированию
@@ -117,7 +126,18 @@ void JudgeCheak(EasyLogs& logs, const qudge_queue_note& note) {
 	}
 
 	// запускаем проверку
-	judge_run_result j_res = RunExeWithLimits(exe_path_str, dir_path_str, dir_path_str + "Judge_test\\input.txt", dir_path_str + "Judge_test\\output.txt", note.task_ptr->time_limit_ms, note.task_ptr->memory_limit_kb * 1024);
+	judge_run_result j_res = RunExeWithLimits(exe_path_str, dir_path_str + "Judge_test", dir_path_str + "Judge_test\\input.txt", dir_path_str + "Judge_test\\output.txt", note.task_ptr->time_limit_ms, note.task_ptr->memory_limit_kb * 1024);
+	
+	//	амартизируем значения
+	if (j_res.time_ms <= 15)
+		j_res.time_ms = 0;	// ставим в 0
+	else
+		j_res.time_ms -= 15;	// -15 мс (запуск процесса и т д)
+
+	if (j_res.peak_memory <= 4097 * 1024)
+		j_res.peak_memory = 1024;	// ставим 1 кб
+	else
+		j_res.peak_memory -= 4096 * 1024;	// минус 4096кб * 1024 (получили байты)
 
 	if (j_res.timeout) {
 		note.cheack_ptr->is_good = false;
@@ -168,75 +188,31 @@ void JudgeCheak(EasyLogs& logs, const qudge_queue_note& note) {
 
 		tmp_file.close();
 
-		if (tmp_output.length() == note.task_ptr->output_file.length() + 1) {
-			// скорее всего в конце осталася '\n'
-			tmp_output.pop_back();
+		std::string normalz_output = NormalizeOutput(tmp_output);
+		std::string normlz_right_output = NormalizeOutput(note.task_ptr->output_file);
 
-			if (tmp_output == note.task_ptr->output_file) {
-				// верно
-				note.cheack_ptr->is_good = true;
-				note.cheack_ptr->info = "все окей";
-				note.cheack_ptr->cpu_time_ms = j_res.time_ms;
-				note.cheack_ptr->memory_bytes = j_res.peak_memory;
-
-				JudgeInsertResults(note);
-
-				logs.insert(EL_JUDGE, "Верный ответ от студента: " + std::to_string(note.task_account_ptr->account_id));
-
-				return;
-			}
-			else {
-				// неверно
-				note.cheack_ptr->is_good = true;
-				note.cheack_ptr->info = "Неверный ответ";
-				note.cheack_ptr->cpu_time_ms = j_res.time_ms;
-				note.cheack_ptr->memory_bytes = j_res.peak_memory;
-
-				JudgeInsertResults(note);
-
-				logs.insert(EL_JUDGE, "Неверный ответ от студента: " + std::to_string(note.task_account_ptr->account_id) + ", проверка остановлена");
-
-				return;
-			}
-		}
-		else if (tmp_output.length() == note.task_ptr->output_file.length()) {
-			if (tmp_output == note.task_ptr->output_file) {
-				// верно
-				note.cheack_ptr->is_good = true;
-				note.cheack_ptr->info = "все окей";
-				note.cheack_ptr->cpu_time_ms = j_res.time_ms;
-				note.cheack_ptr->memory_bytes = j_res.peak_memory;
-
-				JudgeInsertResults(note);
-
-				logs.insert(EL_JUDGE, "Верный ответ от студента: " + std::to_string(note.task_account_ptr->account_id));
-
-				return;
-			}
-			else {
-				// неверно
-				note.cheack_ptr->is_good = true;
-				note.cheack_ptr->info = "Неверный ответ";
-				note.cheack_ptr->cpu_time_ms = j_res.time_ms;
-				note.cheack_ptr->memory_bytes = j_res.peak_memory;
-
-				JudgeInsertResults(note);
-
-				logs.insert(EL_JUDGE, "Неверный ответ от студента: " + std::to_string(note.task_account_ptr->account_id) + ", проверка остановлена");
-
-				return;
-			}
-		}
-		else {
-			// не совпадает длина
-			note.cheack_ptr->is_good = false;
-			note.cheack_ptr->info = "Неверный ответ (длина)";
+		if (normalz_output == normlz_right_output) {
+			note.cheack_ptr->is_good = true;
+			note.cheack_ptr->info = "все окей";
 			note.cheack_ptr->cpu_time_ms = j_res.time_ms;
 			note.cheack_ptr->memory_bytes = j_res.peak_memory;
 
 			JudgeInsertResults(note);
 
-			logs.insert(EL_JUDGE, "Неверный ответ (длина) от студента: " + std::to_string(note.task_account_ptr->account_id) + ", проверка остановлена");
+			logs.insert(EL_JUDGE, "Верный ответ от студента: " + std::to_string(note.task_account_ptr->account_id));
+
+			return;
+		}
+		else {
+			// неверно
+			note.cheack_ptr->is_good = true;
+			note.cheack_ptr->info = "Неверный ответ";
+			note.cheack_ptr->cpu_time_ms = j_res.time_ms;
+			note.cheack_ptr->memory_bytes = j_res.peak_memory;
+
+			JudgeInsertResults(note);
+
+			logs.insert(EL_JUDGE, "Неверный ответ от студента: " + std::to_string(note.task_account_ptr->account_id) + ", проверка остановлена");
 
 			return;
 		}
@@ -246,6 +222,7 @@ void JudgeCheak(EasyLogs& logs, const qudge_queue_note& note) {
 }
 
 judge_run_result RunExeWithLimits(const std::string& exe_path, const std::string& working_dir_path, const std::string& input_file, const std::string& output_file, int time_limit_ms, uint32_t memory_limit_bytes) {
+	// подготовка данных
 	judge_run_result res{};
 	res.success = false;
 	res.timeout = false;
@@ -254,12 +231,18 @@ judge_run_result RunExeWithLimits(const std::string& exe_path, const std::string
 	res.peak_memory = 0;
 	res.time_ms = 0.0;
 
-	//открываем input.txt (stdin)
+	// подготовка ввода/вывода
+	SECURITY_ATTRIBUTES sa{};
+	sa.nLength = sizeof(sa);
+	sa.lpSecurityDescriptor = NULL;
+	sa.bInheritHandle = TRUE;
+
+	// stdin
 	HANDLE hIn = CreateFileA(
 		input_file.c_str(),
 		GENERIC_READ,
 		FILE_SHARE_READ,
-		NULL,
+		&sa,
 		OPEN_EXISTING,
 		FILE_ATTRIBUTE_NORMAL,
 		NULL
@@ -269,12 +252,12 @@ judge_run_result RunExeWithLimits(const std::string& exe_path, const std::string
 		return res;
 	}
 
-	// открываем output.txt (stdout + stderr)
+	// stdout/stderr
 	HANDLE hOut = CreateFileA(
 		output_file.c_str(),
 		GENERIC_WRITE,
-		FILE_SHARE_READ,
-		NULL,
+		FILE_SHARE_READ | FILE_SHARE_WRITE,
+		&sa,                  
 		CREATE_ALWAYS,
 		FILE_ATTRIBUTE_NORMAL,
 		NULL
@@ -321,11 +304,13 @@ judge_run_result RunExeWithLimits(const std::string& exe_path, const std::string
 
 	//формируем команду
 	std::string cmd = "\"" + exe_path + "\"";
+	std::vector<char> cmd_vec(cmd.begin(), cmd.end());
+	cmd_vec.push_back('\0');
 
 	//создаём процесс (сначала в suspend)
 	if (!CreateProcessA(
 		NULL,
-		cmd.data(),
+		cmd_vec.data(),
 		NULL, NULL,
 		TRUE,              // наследуем stdin/stdout/stderr
 		CREATE_SUSPENDED,
@@ -354,7 +339,7 @@ judge_run_result RunExeWithLimits(const std::string& exe_path, const std::string
 		res.time_ms = now - start;
 
 		//проверка тайм-аута
-		if (res.time_ms > time_limit_ms) {
+		if (res.time_ms > time_limit_ms + 15) {
 			res.timeout = true;
 			TerminateJobObject(hJob, 1);
 			break;
@@ -364,7 +349,7 @@ judge_run_result RunExeWithLimits(const std::string& exe_path, const std::string
 		if (GetProcessMemoryInfo(pi.hProcess, &pmc, sizeof(pmc))) {
 			res.peak_memory = max(res.peak_memory, (size_t)pmc.PeakWorkingSetSize);
 
-			if (pmc.WorkingSetSize > memory_limit_bytes) {
+			if (pmc.WorkingSetSize > memory_limit_bytes + (4096 * 1024)) {
 				res.memlimit = true;
 				TerminateJobObject(hJob, 1);
 				break;
@@ -409,7 +394,7 @@ void JudgeInsertResults(const qudge_queue_note& note) {
 	if (note.task_account_ptr->all_tryes.size() >= 10) {
 		// необходимо освободить номер самого плохого решения
 		std::string tmp_str = note.task_account_ptr->all_tryes[note.task_account_ptr->all_tryes.size() - 1]->cpp_file;
-		attemp = "attemp" + tmp_str.substr(tmp_str.length() - 2, 2) + ".cpp";	// получили название
+		attemp = "attemp" + tmp_str.substr(tmp_str.length() - 6, 2) + ".cpp";	// получили название
 
 		note.task_account_ptr->all_tryes.pop_back();	// очистили худшее решение
 	}
@@ -1407,6 +1392,107 @@ void CreateConfirmSolutionMessage(std::vector<char>& vect) {
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
 }
 
+void CreateFinushCheackSolutionMessage(std::vector<char>& vect) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+	unsigned char uchar_buffer;
+	char* tmp_ptr;
+
+	// сразу заполняем сообщение (main_data пуста)
+	vect.clear();
+
+	uchar_buffer = FROM_SERVER;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = SEND_SOLUTION;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 2;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = 0;	// NULL
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+}
+
+void CreateGetSolutionMessage(std::vector<char>& vect, const uint32_t& task_id, const uint32_t& solution_id, const uint32_t& sort_id, const cheacks* solution_ptr, const task_note* task_ptr) {
+	// временные перменные
+	uint32_t uint32_t_buffer;
+	bool is_good;
+	time_t send_time;
+	char* tmp_ptr;
+	unsigned char uchar_buffer;
+
+	std::vector<char> main_data;
+
+	// составление main_data
+	uint32_t_buffer = task_id;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = solution_id;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = sort_id;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	is_good = solution_ptr->is_good;
+	tmp_ptr = reinterpret_cast<char*>(&is_good);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(bool));
+
+	send_time = solution_ptr->send_time;
+	tmp_ptr = reinterpret_cast<char*>(&send_time);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(time_t));
+
+	uint32_t_buffer = solution_ptr->info.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), solution_ptr->info.begin(), solution_ptr->info.end());
+
+	uint32_t_buffer = solution_ptr->cpu_time_ms;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = task_ptr->time_limit_ms;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = solution_ptr->memory_bytes;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = task_ptr->memory_limit_kb;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+	
+	// составление всего сообщения
+	vect.clear();
+
+	uchar_buffer = FROM_SERVER;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = OPEN_SOLUTION;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 1;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = main_data.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
 bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
 	if (msg_header.first_code != FROM_CLIENT) {
 		std::string tmp_str{ "Ошибка первичного кода сообщения от " };
@@ -1452,6 +1538,9 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 		break;
 	case SEND_SOLUTION:
 		return ProcessSendSolutonMessage(msg_header, recv_buffer, connection_ptr, server, logs);
+		break;
+	case OPEN_SOLUTION:
+		return ProcessGetSolutionMessage(msg_header, recv_buffer, connection_ptr, server, logs);
 		break;
 	default:	// заглушка для неизвестных
 		std::string tmp_str{ "Неизвестный вторичный код сообщения от " };
@@ -2093,7 +2182,7 @@ bool ProcessGetAllSolutionsMessage(const MsgHead& msg_header, const std::vector<
 			});
 		break;
 	default:	// ошибка код
-		logs.insert(EL_ERROR, EL_ACTION, "Ошибка необходимой сортировки в запросе по всем решениям от: " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		logs.insert(EL_ERROR, EL_ACTION, "Ошибка необходимой сортировки ("+ std::to_string(msg_header.third_code) + ")в запросе по всем решениям от: " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
 		return false;
 		break;
 	}
@@ -2202,6 +2291,7 @@ bool ProcessSendSolutonMessage(const MsgHead& msg_header, const std::vector<char
 		tmp_note.cheack_ptr = cheack_ptr;
 		tmp_note.task_account_ptr = (*it);
 		tmp_note.task_ptr = server.all_tasks[task_id];
+		tmp_note.connection_ptr = connection_ptr;
 
 		server.judge_queue.push(tmp_note);
 	}
@@ -2214,12 +2304,137 @@ bool ProcessSendSolutonMessage(const MsgHead& msg_header, const std::vector<char
 	return SendTo(connection_ptr, data, logs);
 }
 
+bool ProcessGetSolutionMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
+	// времменные переменные
+	uint32_t task_id, solution_id, sort_id;
+
+	// чтение сообщения
+	uint32_t index = msg_header.size_of();
+	try {
+		task_id = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		solution_id = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		sort_id = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+	}
+	catch (...) {
+		logs.insert(EL_ERROR, EL_NETWORK, "Ошибка чтения запроса открытия решения от: " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	// => чтене было удачным. Проверяем наличия студента + наличие у него n-го задания (в целом)
+	if (connection_ptr->account_ptr == nullptr) {
+		logs.insert(EL_ERROR, EL_SYSTEM, "Ошибка чтения data студента при запросе открытия решения от: " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	if (task_id > server.all_tasks.size() - 1) {
+		logs.insert(EL_ERROR, EL_SYSTEM, "Ошибка чтения data задания при запросе открытия решения от: " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	auto account_it = server.all_tasks[task_id]->checked_accounts.begin();
+	while (account_it != server.all_tasks[task_id]->checked_accounts.end()) {
+		if ((*account_it)->account_id == connection_ptr->account_ptr->id)
+			break;
+
+		account_it++;
+	}
+	if (account_it == server.all_tasks[task_id]->checked_accounts.end()) {	// если it == .end() => никого не нашли
+		logs.insert(EL_ERROR, EL_SYSTEM, "Ошибка поиска аккаунта в решениях при запросе решения от: " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	if (solution_id > (*account_it)->all_tryes.size() - 1) {
+		logs.insert(EL_ERROR, EL_SYSTEM, "Ошибка количества решений при запросе решения от: " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	if (sort_id < 0 || sort_id > 2) {
+		logs.insert(EL_ERROR, EL_SYSTEM, "Ошибка типа сортировки ("+ std::to_string(sort_id) + ") при запросе решения от: " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	// => ошибок с данными нет, можем дальше повторять сортировку, находить по индексу нужное решение
+	// account_it указывает на аккаунта с заданиями
+	std::vector<cheacks*> tmp_cheaks;
+	{
+		std::lock_guard<std::mutex> lock((*account_it)->account_id_cheak_mutex);
+
+		tmp_cheaks = (*account_it)->all_tryes;
+	}
+
+	switch (sort_id)
+	{
+	case 1:	// сортировка по памяти
+		std::sort(tmp_cheaks.begin(), tmp_cheaks.end(),
+			[](const cheacks* first, const cheacks* second) {
+				if (first->is_good == second->is_good) {
+					if (first->memory_bytes == second->memory_bytes) {
+
+						return first->cpu_time_ms < second->cpu_time_ms;	// в начало ставим с меньшим временем (<)
+					}
+
+					return first->memory_bytes < second->memory_bytes;	// в начало ставим с меньшей памятью (<)
+				}
+
+				return first->is_good > second->is_good;	// в начало ставим true (>)
+			});
+		break;
+	case 2:	// сортировка по дате сдачи
+		std::sort(tmp_cheaks.begin(), tmp_cheaks.end(),
+			[](const cheacks* first, const cheacks* second) {
+				if (first->is_good == second->is_good) {
+					if (first->send_time == second->send_time) {
+						if (first->cpu_time_ms == second->cpu_time_ms) {
+
+							return first->memory_bytes < second->memory_bytes;	// в начало ставим с меньшей памятью
+						}
+
+						return first->cpu_time_ms < second->cpu_time_ms;	// в начало ставим быстреейшее (<)
+					}
+
+					return first->send_time < second->send_time;	// в начало более ранее (<)
+				}
+
+				return first->is_good > second->is_good;	// в начало true (>) большее
+			});
+		break;
+	}
+
+	// есть отсортированный массив tmp_cheaks, теперь выбираем нужное решение (под [solution_id])
+	std::vector<char> data;
+	
+	CreateGetSolutionMessage(data, task_id, solution_id, sort_id, tmp_cheaks[solution_id], server.all_tasks[task_id]);
+
+	return SendTo(connection_ptr, data, logs);
+}
+
 std::string GetAppDirectory() {
 	char path[MAX_PATH];
 	GetModuleFileNameA(nullptr, path, MAX_PATH);
 	std::string dir(path);
 	size_t pos = dir.find_last_of("\\/");
 	return dir.substr(0, pos);
+}
+
+std::string NormalizeOutput(const std::string& s) {
+	std::string r;
+
+	// убираемрать '\r'
+	for (char c : s) {
+		if (c != '\r') r.push_back(c);
+	}
+
+	// убираем пробелы в конце строк
+	while (!r.empty() && (r.back() == ' ' || r.back() == '\t' || r.back() == '\n')) {
+		r.pop_back();
+	}
+
+	return r;
 }
 
 //---------------------------------------------------------- методы классов

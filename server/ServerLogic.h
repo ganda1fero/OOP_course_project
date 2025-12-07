@@ -101,6 +101,8 @@ struct qudge_queue_note {
 	cheacks* cheack_ptr{ nullptr };
 
 	task_note* task_ptr{ nullptr };
+
+	serv_connection* connection_ptr{ nullptr };
 };
 
 struct judge_run_result {
@@ -228,6 +230,9 @@ void CreateFailChangePasswordMessage(std::vector<char>& vect);
 void CreateGetAllSolutionsMessage(std::vector<char>& vect, const std::vector<cheacks*>& sorted_solutions, const uint32_t& task_id, const id_cheack* account_tryes_ptr, const uint32_t& sort_type, ServerData& server);
 
 void CreateConfirmSolutionMessage(std::vector<char>& vect);
+void CreateFinushCheackSolutionMessage(std::vector<char>& vect);
+
+void CreateGetSolutionMessage(std::vector<char>& vect, const uint32_t& task_id, const uint32_t& solution_id, const uint32_t& sort_id, const cheacks* solution_ptr, const task_note* task_ptr);
 
 
 //------------------(Функции чтения message)
@@ -243,10 +248,12 @@ bool ProcessChangeThatTaskMessage(const MsgHead& msg_header, const std::vector<c
 bool ProcessChangePasswordMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessGetAllSolutionsMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessSendSolutonMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessGetSolutionMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 
 
 //-----------------(Перифирия)
 std::string GetAppDirectory();
+std::string NormalizeOutput(const std::string& s);
 
 
 #endif
