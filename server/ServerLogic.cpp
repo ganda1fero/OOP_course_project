@@ -2933,7 +2933,7 @@ bool ServerData::__read_from_file_all_tasks__() {
 					file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
 					tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->info.resize(uint32_t_buffer);
 
-					file.read(&tmp_all_tasks[i]->checked_accounts[g]->all_tryes[g]->info[0], tmp_all_tasks[i]->checked_accounts[g]->all_tryes[g]->info.size());
+					file.read(&tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->info[0], tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->info.size());
 
 					file.read(reinterpret_cast<char*>(&uint32_t_buffer), sizeof(uint32_t));
 					tmp_all_tasks[i]->checked_accounts[g]->all_tryes[h]->cpp_file.resize(uint32_t_buffer);
