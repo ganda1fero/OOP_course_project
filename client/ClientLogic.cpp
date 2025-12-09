@@ -61,6 +61,31 @@ Client_data::Client_data(){
 	is_connected_ = false;
 }
 
+void Client_data::ReadFromFile() {
+	std::ifstream file("servIp.txt");
+
+	if (file.is_open()) {
+		server_ip.clear();
+
+		std::getline(file, server_ip);
+
+		file.close();
+
+		if (IsValidIP(server_ip) == false)
+			server_ip.clear();
+	}
+}
+
+void Client_data::WriteToFile() {
+	std::ofstream file("servIp.txt", std::iostream::trunc);
+
+	if (file.is_open()) {
+		file << server_ip;	// сохранили в файл
+
+		file.close();
+	}
+}
+
 // функции
 
 void ClientMenuLogic(Client_data& client_data) {
@@ -165,13 +190,16 @@ bool AuthorisationMenuLogic(Client_data& client_data) {
 				}
 			}
 			break;
-		case 3:	// авторизация
+		case 3:	// настройки
+			AuthorisationMenuChangeIpLogic(client_data);
+			break;
+		case 4:	// авторизация
 			idk = true;
 			{
 				std::lock_guard<std::mutex> lock(client_data.menu_mutex);
 
 				if (client_data.menu_.is_all_advanced_cin_correct() == false) {
-					client_data.menu_.set_notification(3, "(Исправьте ошибки в вводе)");
+					client_data.menu_.set_notification(4, "(Исправьте ошибки в вводе)");
 					break;
 				}
 
@@ -209,7 +237,7 @@ bool AuthorisationMenuLogic(Client_data& client_data) {
 				if (SendTo(client_data, data) == false) {
 					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
 
-					client_data.menu_.set_notification(3, "(Ошибка отправки запроса)");
+					client_data.menu_.set_notification(4, "(Ошибка отправки запроса)");
 					break;
 				}
 
@@ -217,10 +245,10 @@ bool AuthorisationMenuLogic(Client_data& client_data) {
 			}
 			else {
 				std::lock_guard<std::mutex> lock(client_data.menu_mutex);
-				client_data.menu_.set_notification(3, "(Не удалось подключиться)");
+				client_data.menu_.set_notification(4, "(Не удалось подключиться)");
 			}
 			break;
-		case 4:	// выход
+		case 5:	// выход
 			return false;
 			break;
 		}
@@ -644,8 +672,12 @@ bool ConnectClient(Client_data& client_data) {
 	server_adress.sin_port = htons(60888); // задаем порт сервера
 	if (SERVER_LOCAL_MODE)
 		server_adress.sin_addr.s_addr = inet_addr("127.0.0.1"); // задает IP сервера
-	else
-		server_adress.sin_addr.s_addr = inet_addr("26.225.195.119"); // IP адресс RadminVPN
+	else {
+		if (client_data.server_ip.empty())
+			server_adress.sin_addr.s_addr = inet_addr("26.225.195.119"); // IP адресс RadminVPN
+		else
+			server_adress.sin_addr.s_addr = inet_addr(client_data.server_ip.c_str()); // статический (введенный) ip
+	}
 
 	u_long mode = 0; // 0 = блокирующий режим
 	ioctlsocket(client_data.door_sock, FIONBIO, &mode);	// поставили сокет в блокирующий режим (чисто для удобного connect)
@@ -1511,6 +1543,8 @@ void AuthorisationMenu(Client_data& client_data, std::string text) {
 	client_data.menu_.push_back_butt("Показать пароль");
 	client_data.menu_.set_color(2, MAGENTA_COLOR);
 
+	client_data.menu_.push_back_butt("Настройки");
+
 	client_data.menu_.push_back_butt("Войти");
 	
 	client_data.menu_.push_back_butt("Выход из программы");
@@ -1520,6 +1554,58 @@ void AuthorisationMenu(Client_data& client_data, std::string text) {
 	client_data.screen_info_.type = AUTHORISATION_MENUTYPE;
 	client_data.screen_info_.id = 0;
 	client_data.screen_info_.role = NO_ROLE;
+}
+
+bool AuthorisationMenuChangeIpLogic(Client_data& client_data) {
+	EasyMenu menu;
+	menu.set_info("Настройки");
+
+	menu.push_back_advanced_cin("Ip сервера:", client_data.server_ip);
+	menu.set_advanced_cin_max_input_length(0, 15);
+	menu.set_advanced_cin_new_allowed_chars(0, "1234567890.");
+
+	menu.push_back_butt("Сохранить");
+
+	menu.push_back_butt("Назад");
+	menu.set_color(2, BLUE_COLOR);
+
+	while (true) {	// тело меню
+		switch (menu.easy_run())
+		{
+		case 1:	// сохранить
+			if (menu.get_advanced_cin_input(0).empty()) {
+				client_data.server_ip.clear();
+				client_data.WriteToFile();
+				return false;
+			}
+			else {	// значит строка не пустая => нужно что-то искать
+				if (menu.is_all_advanced_cin_correct() == false) {
+					menu.set_notification(1, "(Исправьте ошибки в вводе)");
+					menu.set_notification_color(1, RED_COLOR);
+					break;
+				}
+				{
+					std::string tmp_ip_str = menu.get_advanced_cin_input(0);
+
+					if (IsValidIP(tmp_ip_str) == false) {
+						menu.set_notification(1, "(Не является возможным IP!)");
+						menu.set_notification_color(1, RED_COLOR);
+						break;
+					}
+
+					client_data.server_ip = tmp_ip_str;
+					client_data.WriteToFile();	// сохранили ip
+
+					return true;
+				}
+
+			}
+			break;
+		case 2:	// назад
+			return false;
+			break;
+		}
+	}
 }
 
 void TeacherMenu(Client_data& client_data, std::string text) {
@@ -3027,4 +3113,15 @@ std::string StringFromTimeT(const time_t& time) {
 	tmp_str += (((tmp_tm.tm_year - 100) < 10) ? "0" : "") + std::to_string(tmp_tm.tm_year - 100);
 
 	return tmp_str;
+}
+
+bool IsValidIP(const std::string& ipString) {
+	unsigned char buf[sizeof(in_addr)]; // Буфер достаточного размера для IPv4
+
+	// Попытка преобразования как IPv4
+	if (inet_pton(AF_INET, ipString.c_str(), buf) == 1) {
+		return true;
+	}
+
+	return false;
 }

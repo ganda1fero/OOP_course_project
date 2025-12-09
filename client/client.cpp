@@ -6,6 +6,7 @@ int main() {
 	// инициализация всего
 	SOCKET door_sock;
 	Client_data client_data;
+	client_data.ReadFromFile();
 
 	if (SetupClient(client_data) == false) {
 		std::cout << "Ошибка (SetupClient)";
