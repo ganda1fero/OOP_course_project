@@ -58,6 +58,8 @@ class Client_data {
 public:
 	// методы
 	Client_data();
+	void ReadFromFile();
+	void WriteToFile();
 
 	// поля
 	SOCKET door_sock;
@@ -74,6 +76,8 @@ public:
 
 	std::mutex is_connected_mutex;
 	bool is_connected_;
+
+	std::string server_ip;
 };
 
 // функции
@@ -116,6 +120,7 @@ bool GetSolution(const MsgHead& msg_header, const std::vector<char>& recv_buffer
 
 // менюшки
 void AuthorisationMenu(Client_data& client_data, std::string text);
+bool AuthorisationMenuChangeIpLogic(Client_data& client_data);
 
 void TeacherMenu(Client_data& client_data, std::string text);
 bool TeacherCreateNewTask(Client_data& client_data);
@@ -169,6 +174,8 @@ std::string GetAppDirectory();
 void OpenFileForUser(const std::string& file_path);
 
 std::string StringFromTimeT(const time_t& time);
+
+bool IsValidIP(const std::string& ipString);
 
 
 #endif
