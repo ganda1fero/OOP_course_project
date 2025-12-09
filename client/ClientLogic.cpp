@@ -1559,6 +1559,7 @@ void AuthorisationMenu(Client_data& client_data, std::string text) {
 bool AuthorisationMenuChangeIpLogic(Client_data& client_data) {
 	EasyMenu menu;
 	menu.set_info("Настройки");
+	menu.set_info_main_color(LIGHT_YELLOW_COLOR);
 
 	menu.push_back_advanced_cin("Ip сервера:", client_data.server_ip);
 	menu.set_advanced_cin_max_input_length(0, 15);
