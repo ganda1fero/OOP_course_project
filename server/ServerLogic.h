@@ -227,12 +227,16 @@ void CreateChangeTaskMessage(std::vector<char>& vect, uint32_t butt_index, Serve
 void CreateSuccessChangePasswordMessage(std::vector<char>& vect);
 void CreateFailChangePasswordMessage(std::vector<char>& vect);
 
-void CreateGetAllSolutionsMessage(std::vector<char>& vect, const std::vector<cheacks*>& sorted_solutions, const uint32_t& task_id, const id_cheack* account_tryes_ptr, const uint32_t& sort_type, ServerData& server);
+void CreateGetAllSolutionsMessage(std::vector<char>& vect, const std::vector<cheacks*>& sorted_solutions, const uint32_t& task_id, const id_cheack* account_tryes_ptr, const uint32_t& sort_type, const uint32_t& account_task_id, ServerData& server);
 
 void CreateConfirmSolutionMessage(std::vector<char>& vect);
 void CreateFinushCheackSolutionMessage(std::vector<char>& vect);
 
 void CreateGetSolutionMessage(std::vector<char>& vect, const uint32_t& task_id, const uint32_t& solution_id, const uint32_t& sort_id, const cheacks* solution_ptr, const task_note* task_ptr);
+
+void CreateGetAllSudentsFromTaskMessge(std::vector<char>& vect, const uint32_t& task_id, const task_note* task_ptr, ServerData& server);
+
+void CreateGetSolutionFromStudentMessage(std::vector<char>& vect, const cheacks* nedded_cheack_ptr);
 
 
 //------------------(Функции чтения message)
@@ -249,7 +253,10 @@ bool ProcessChangePasswordMessage(const MsgHead& msg_header, const std::vector<c
 bool ProcessGetAllSolutionsMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessSendSolutonMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessGetSolutionMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
-
+bool ProcessGetAllStudentsFromTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessGetSolutionFromStudentMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessGetAllStudentSolutionsMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessGetSolutionFromTeacherMesasge(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 
 //-----------------(Перифирия)
 std::string GetAppDirectory();
