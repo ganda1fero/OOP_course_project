@@ -118,6 +118,8 @@ bool SendSolutionConfirm(const MsgHead& msg_header, const std::vector<char>& rec
 
 bool GetSolution(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
 
+bool GetALLStudentsFromTask(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
+
 // менюшки
 void AuthorisationMenu(Client_data& client_data, std::string text);
 bool AuthorisationMenuChangeIpLogic(Client_data& client_data);
@@ -128,6 +130,7 @@ void TeacherAlltasks(Client_data& client_data, std::vector<std::string> buttons)
 void TeacherTaskInfo(Client_data& client_data, const std::string& name, const std::string& info, const uint32_t& count_of_completes, const uint32_t& time_limit_ms, const uint32_t& memory_limit_kb, const uint32_t& butt_index);
 bool TeacherDeleteConfirmMenu();
 bool TeacherChangeTaskMenu(Client_data& client_data, uint32_t& butt_index, std::string& name, std::string& info, std::string& input_file, std::string& output_file, uint32_t& time_limit_ms, uint32_t& memory_limit_kb, bool& is_del_tryes);
+template <typename T> void TeacherGetAllStudentsFromTaskMenu(Client_data& client_data, const uint32_t& task_id, const std::string& task_name, std::vector<T> all_accounts_in_task);
 
 void StudentMenu(Client_data& client_data, std::string text);
 void StudentAlltasks(Client_data& client_data, const std::vector<std::string>& buttons, const std::vector<bool>& buttons_status);
@@ -164,6 +167,8 @@ void CreateGetAllSolutionsMessage(std::vector<char>& vect, const uint32_t& task_
 void CreateSendSolutionMessage(std::vector<char>& vect, const std::string& cpp_file_data, const uint32_t task_id);
 
 void CreateGetSolutionMessage(std::vector<char>& vect, const uint32_t task_id, const uint32_t solution_id, const uint32_t sort_id);
+
+void CreateGetAllStudentFromTask(std::vector<char>& vect, const uint32_t task_id);
 
 // перефирия
 std::string WstrToStr(const std::wstring& wstr);

@@ -14,6 +14,7 @@
 #define GET_ALL_SOLUTIONS 77
 #define SEND_SOLUTION 90
 #define OPEN_SOLUTION 95
+#define GET_ALL_STUDENTS_FROM_SOLUTION 105
 
 #include "ServerLogic.h"
 
@@ -513,8 +514,6 @@ bool SetupServer(SOCKET& door_sock, EasyLogs& logs) {
 
 		return false;	// выход
 	}	// поставили сокет режим слушани€
-
-
 
 	return true;
 }
@@ -1493,6 +1492,83 @@ void CreateGetSolutionMessage(std::vector<char>& vect, const uint32_t& task_id, 
 	vect.insert(vect.end(), main_data.begin(), main_data.end());
 }
 
+void CreateGetAllSudentsFromTaskMessge(std::vector<char>& vect, const uint32_t& task_id, const task_note* task_ptr, ServerData& server) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+	char* tmp_ptr;
+	unsigned char uchar_buffer;
+	bool bool_buffer;
+
+	std::vector<char> main_data;
+
+	// составление main_data
+	uint32_t_buffer = task_id;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = task_ptr->task_name.length();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	main_data.insert(main_data.end(), task_ptr->task_name.begin(), task_ptr->task_name.end());
+
+	uint32_t_buffer = task_ptr->checked_accounts.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	for (id_cheack* now_task_account_ptr : task_ptr->checked_accounts) {
+		account_note* tmp_account_ptr = server.get_account_ptr(now_task_account_ptr->account_id);
+		
+		std::string tmp_str;
+		tmp_str = tmp_account_ptr->last_name + ' ' + tmp_account_ptr->first_name[0] + '.' + tmp_account_ptr->surname[0] + '.';
+		
+		uint32_t_buffer = tmp_str.length();
+		tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+		main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+		main_data.insert(main_data.end(), tmp_str.begin(), tmp_str.end());
+
+		uint32_t_buffer = now_task_account_ptr->account_id;
+		tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+		main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+		bool_buffer = ((now_task_account_ptr->all_tryes.size() > 0) ? (now_task_account_ptr->all_tryes[0]->is_good) : false);
+		tmp_ptr = reinterpret_cast<char*>(&bool_buffer);
+		main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(bool));
+
+		if (bool_buffer) {
+			uint32_t_buffer = now_task_account_ptr->all_tryes[0]->cpu_time_ms;
+			tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+			main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+			uint32_t_buffer = now_task_account_ptr->all_tryes[0]->memory_bytes / 1024;	// переводим в  б
+			tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+			main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+		}
+	}
+
+	// составлние всего сообщени€
+	vect.clear();
+
+	uchar_buffer = FROM_SERVER;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = GET_ALL_STUDENTS_FROM_SOLUTION;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 0;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = main_data.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
 bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
 	if (msg_header.first_code != FROM_CLIENT) {
 		std::string tmp_str{ "ќшибка первичного кода сообщени€ от " };
@@ -1541,6 +1617,9 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 		break;
 	case OPEN_SOLUTION:
 		return ProcessGetSolutionMessage(msg_header, recv_buffer, connection_ptr, server, logs);
+		break;
+	case GET_ALL_STUDENTS_FROM_SOLUTION:
+		return ProcessGetAllStudentsFromTaskMessage(msg_header, recv_buffer, connection_ptr, server, logs);
 		break;
 	default:	// заглушка дл€ неизвестных
 		std::string tmp_str{ "Ќеизвестный вторичный код сообщени€ от " };
@@ -2409,6 +2488,53 @@ bool ProcessGetSolutionMessage(const MsgHead& msg_header, const std::vector<char
 	std::vector<char> data;
 	
 	CreateGetSolutionMessage(data, task_id, solution_id, sort_id, tmp_cheaks[solution_id], server.all_tasks[task_id]);
+
+	return SendTo(connection_ptr, data, logs);
+}
+
+bool ProcessGetAllStudentsFromTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
+	// провер€ем роль
+	if (connection_ptr->account_ptr->role != TEACHER_ROLE) {
+		logs.insert(EL_ERROR, EL_ACTION, "¬ыход за предылы роли от : " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	// временные переменные
+	uint32_t uint32_t_buffer;	// task_id
+	task_note* task_ptr{ nullptr };
+
+	// читаем сообщение
+	uint32_t index = msg_header.size_of();
+	try {
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+	}
+	catch (...) {
+		logs.insert(EL_ERROR, EL_NETWORK, "ќшибка чтени€ запроса на получени€ всех студенов по заданию от : " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	// чтение было удачным => ищем всех стдентов по заданию
+	if (uint32_t_buffer > server.all_tasks.size() - 1) {
+		logs.insert(EL_ERROR, EL_ACTION, "ќшибка (слишком большой task_id: " + std::to_string(uint32_t_buffer) + ") от : " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	{
+		std::lock_guard<std::mutex> lokc(server.tasks_mutex);
+
+		task_ptr = server.all_tasks[uint32_t_buffer];	// записали указатель на нужное задание
+	}
+
+	if (task_ptr == nullptr) {
+		logs.insert(EL_ERROR, EL_ACTION, "ќшибка task_ptr при поиске всех стундентов по заданию от : " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	// запись и отправка ответа
+	std::vector<char> data;
+	
+	CreateGetAllSudentsFromTaskMessge(data, uint32_t_buffer, task_ptr, server);
 
 	return SendTo(connection_ptr, data, logs);
 }

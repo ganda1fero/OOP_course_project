@@ -234,6 +234,8 @@ void CreateFinushCheackSolutionMessage(std::vector<char>& vect);
 
 void CreateGetSolutionMessage(std::vector<char>& vect, const uint32_t& task_id, const uint32_t& solution_id, const uint32_t& sort_id, const cheacks* solution_ptr, const task_note* task_ptr);
 
+void CreateGetAllSudentsFromTaskMessge(std::vector<char>& vect, const uint32_t& task_id, const task_note* task_ptr, ServerData& server);
+
 
 //------------------(Функции чтения message)
 bool ProcessAuthorisationMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
@@ -249,6 +251,7 @@ bool ProcessChangePasswordMessage(const MsgHead& msg_header, const std::vector<c
 bool ProcessGetAllSolutionsMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessSendSolutonMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessGetSolutionMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessGetAllStudentsFromTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 
 
 //-----------------(Перифирия)

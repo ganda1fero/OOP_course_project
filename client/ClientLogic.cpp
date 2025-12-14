@@ -16,6 +16,7 @@
 #define GET_ALL_SOLUTIONS 77
 #define SEND_SOLUTION 90
 #define OPEN_SOLUTION 95
+#define GET_ALL_STUDENTS_FROM_SOLUTION 105
 
 // методы классов
 
@@ -548,8 +549,27 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 					SendTo(client_data, tmp_data);
 				}
 				break;
-			case 2:	// просмотр заданий
+			case 2:	// просмотр всех решений
+				{
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+					client_data.menu_.set_notification(7, "(¬ обработке...)");
+					client_data.menu_.set_notification_color(7, YELLOW_COLOR);
 
+					client_data.menu_.advanced_clear_console();
+					client_data.menu_.advanced_display_menu();
+				}
+				{
+					std::vector<char> data;
+					uint32_t butt_index;	// task_id
+					{
+						std::lock_guard<std::mutex> lock(client_data.screen_info_mutex);
+						butt_index = client_data.screen_info_.id;
+					}
+
+					CreateGetAllStudentFromTask(data, butt_index);
+
+					SendTo(client_data, data);
+				}
 				break;
 			case 3:	// редактирование
 				{
@@ -614,8 +634,24 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 				break;
 			}
 			break;
-		}
+		case 4:	// меню всех студентов (решений) по заданию
+			if (pressed_but >= (client_data.screen_info_.id / 1000) - 1) { // нажата кнопка назад
+				{
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+					client_data.menu_.set_notification(((client_data.screen_info_.id / 1000) - 1 == 0) ? 1 : pressed_but, "(¬ обработке...)");
 
+					client_data.menu_.advanced_clear_console();
+					client_data.menu_.advanced_display_menu();
+				}
+				std::vector<char> data;
+				CreateGetTaskInfoMessage(data, client_data.screen_info_.id % 1000);
+				SendTo(client_data, data);
+			}
+			else {	// выбран студент
+
+			}
+			break;
+		}
 		break;
 
 	case ADMIN_ROLE:
@@ -916,6 +952,9 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 		break;
 	case OPEN_SOLUTION:
 		return GetSolution(msg_header, recv_buffer, client_data);
+		break;
+	case GET_ALL_STUDENTS_FROM_SOLUTION:
+		return GetALLStudentsFromTask(msg_header, recv_buffer, client_data);
 		break;
 	default:
 		return false;	// неизвестна€ команда
@@ -1517,6 +1556,70 @@ bool GetSolution(const MsgHead& msg_header, const std::vector<char>& recv_buffer
 	return true;
 }
 
+bool GetALLStudentsFromTask(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+	uint32_t task_id;
+	std::string task_name;
+
+	struct tmp_note {
+		std::string student_name;
+		uint32_t student_id;
+		bool is_done;
+		uint32_t time_ms{ 0 }, memory_kb{ 0 };
+	};
+
+	std::vector<tmp_note> all_students_tmp;
+
+	// читаем само сообщение
+	uint32_t index = msg_header.size_of();
+	try {
+		task_id = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		task_name.insert(task_name.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		index += uint32_t_buffer;
+
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		all_students_tmp.resize(uint32_t_buffer);
+
+		for (tmp_note& now_note : all_students_tmp) {
+			uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+			index += sizeof(uint32_t);
+
+			now_note.student_name.insert(now_note.student_name.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+			index += uint32_t_buffer;
+
+			now_note.student_id = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+			index += sizeof(uint32_t);
+
+			now_note.is_done = *reinterpret_cast<const bool*>(&recv_buffer[index]);
+			index += sizeof(bool);
+
+			if (now_note.is_done) {
+				now_note.time_ms = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+				index += sizeof(uint32_t);
+
+				now_note.memory_kb = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+				index += sizeof(uint32_t);
+			}
+		}
+	}
+	catch (...) {
+		return false;
+	}
+
+	// прочитали сообщение => можно прододолжать
+	TeacherGetAllStudentsFromTaskMenu(client_data, task_id, task_name, all_students_tmp);
+
+	return true;
+}
+
 void AuthorisationMenu(Client_data& client_data, std::string text) {
 	std::lock_guard<std::mutex> lock(client_data.menu_mutex);
 
@@ -2054,6 +2157,44 @@ bool TeacherChangeTaskMenu(Client_data& client_data, uint32_t& butt_index, std::
 	}
 
 	return true;
+}
+
+template <typename T>
+void TeacherGetAllStudentsFromTaskMenu(Client_data& client_data, const uint32_t& task_id, const std::string& task_name, std::vector<T> all_accounts_in_task) {
+	std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+	client_data.menu_.clear();
+
+	client_data.menu_.set_info("¬се решени€ по заданию: " + task_name);
+	client_data.menu_.set_info_main_color(LIGHT_YELLOW_COLOR);
+
+	if (all_accounts_in_task.empty()) {
+		client_data.menu_.push_back_text("Ќикто не заходил на задание");
+	}
+	else {
+		for (uint32_t i{ 0 }; i < all_accounts_in_task.size(); i++) {
+			client_data.menu_.push_back_butt(all_accounts_in_task[i].student_name + " | " + std::to_string(all_accounts_in_task[i].student_id));
+
+			if (all_accounts_in_task[i].is_done) {	// выводим лучшее врем€
+				client_data.menu_.set_notification(i, std::to_string(all_accounts_in_task[i].time_ms) + " мс | " + std::to_string(all_accounts_in_task[i].memory_kb) + "  б");
+				client_data.menu_.set_notification_color(i, LIGHT_GREEN_COLOR);
+			}
+			else {	// выводим не решено
+				client_data.menu_.set_notification(i, "Ќе решено");
+				client_data.menu_.set_notification_color(i, RED_COLOR);
+			}
+		}
+	}
+
+	client_data.menu_.push_back_butt("Ќазад");
+	client_data.menu_.set_color(((all_accounts_in_task.size() == 0) ? 1 : all_accounts_in_task.size()), BLUE_COLOR);
+
+	// заполенение screen
+	std::lock_guard<std::mutex> lock2(client_data.screen_info_mutex);
+
+	client_data.screen_info_.type = 4;
+	client_data.screen_info_.id = (all_accounts_in_task.size() + 1) * 1000 + task_id;	// содержит количество аккаунтов (дл€ правильной отрботки кнопки выхода) и номер задани€ (делать % 1000) (дл€ количества нопок => (/ 1000) - 1)
+	client_data.screen_info_.role = TEACHER_ROLE;
 }
 
 void StudentMenu(Client_data& client_data, std::string text) {
@@ -3005,6 +3146,41 @@ void CreateGetSolutionMessage(std::vector<char>& vect, const uint32_t task_id, c
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
 
 	uchar_buffer = OPEN_SOLUTION;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 0;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = main_data.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
+void CreateGetAllStudentFromTask(std::vector<char>& vect, const uint32_t task_id) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+	char* tmp_ptr;
+	unsigned char uchar_buffer;
+
+	std::vector<char> main_data;
+
+	// заполенение main_data
+	uint32_t_buffer = task_id;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	// заполение всего сообщени€
+	vect.clear();
+
+	uchar_buffer = FROM_CLIENT;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = GET_ALL_STUDENTS_FROM_SOLUTION;
 	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
 
