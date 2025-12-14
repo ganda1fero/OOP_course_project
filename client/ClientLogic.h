@@ -133,6 +133,7 @@ void TeacherTaskInfo(Client_data& client_data, const std::string& name, const st
 bool TeacherDeleteConfirmMenu();
 bool TeacherChangeTaskMenu(Client_data& client_data, uint32_t& butt_index, std::string& name, std::string& info, std::string& input_file, std::string& output_file, uint32_t& time_limit_ms, uint32_t& memory_limit_kb, bool& is_del_tryes);
 template <typename T> void TeacherGetAllStudentsFromTaskMenu(Client_data& client_data, const uint32_t& task_id, const std::string& task_name, std::vector<T> all_accounts_in_task);
+template <typename T> void TeacherGetAllSolutions(Client_data& client_data, const uint32_t& task_index, const uint32_t& account_task_id, const std::string& task_name, const std::string& task_info, const uint32_t& time_limit_ms, const uint32_t& memory_limit_kb, const bool& is_done, const std::vector<T>& solutions, const uint32_t& sort_type);
 
 void StudentMenu(Client_data& client_data, std::string text);
 void StudentAlltasks(Client_data& client_data, const std::vector<std::string>& buttons, const std::vector<bool>& buttons_status);
@@ -173,6 +174,10 @@ void CreateGetSolutionMessage(std::vector<char>& vect, const uint32_t task_id, c
 void CreateGetAllStudentFromTask(std::vector<char>& vect, const uint32_t task_id);
 
 void CreateGetSolutionFromStudent(std::vector<char>& vect, const uint32_t task_id, const uint32_t solution_id, const uint32_t sort_id);
+
+void CreateGetAllStudedntSolutions(std::vector<char>& vect, const uint32_t task_id, const uint32_t student_task_id);
+
+void CreateGetSolutionFromTeacher(std::vector<char>& vect, const uint32_t task_id, const uint32_t account_task_id, const uint32_t solution_id);
 
 // перефирия
 std::string WstrToStr(const std::wstring& wstr);

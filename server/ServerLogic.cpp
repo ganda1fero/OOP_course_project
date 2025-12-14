@@ -16,6 +16,8 @@
 #define OPEN_SOLUTION 95
 #define GET_ALL_STUDENTS_FROM_SOLUTION 105
 #define GET_SOLUTION_FROM_STUDENT 93
+#define GET_ALL_STUDENT_SOLUTIONS 107
+#define GET_SOLUTION_FROM_TEACHER 109
 
 #include "ServerLogic.h"
 
@@ -1266,7 +1268,7 @@ void CreateFailChangePasswordMessage(std::vector<char>& vect) {
 	//vect.insert(vect.end(), main_data.begin(), main_data.end());
 }
 
-void CreateGetAllSolutionsMessage(std::vector<char>& vect, const std::vector<cheacks*>& sorted_solutions, const uint32_t& task_id, const id_cheack* account_tryes_ptr, const uint32_t& sort_type, ServerData& server) {
+void CreateGetAllSolutionsMessage(std::vector<char>& vect, const std::vector<cheacks*>& sorted_solutions, const uint32_t& task_id, const id_cheack* account_tryes_ptr, const uint32_t& sort_type, const uint32_t& account_task_id, ServerData& server) {
 	// временные переменные
 	uint32_t uint32_t_buffer;
 	char* tmp_ptr;
@@ -1277,6 +1279,10 @@ void CreateGetAllSolutionsMessage(std::vector<char>& vect, const std::vector<che
 	std::vector<char> main_data;
 
 	// main_data
+	uint32_t_buffer = account_task_id;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
 	uint32_t_buffer = task_id;
 	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
 	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
@@ -1668,6 +1674,12 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 		break;
 	case GET_SOLUTION_FROM_STUDENT:
 		return ProcessGetSolutionFromStudentMessage(msg_header, recv_buffer, connection_ptr, server, logs);
+		break;
+	case GET_ALL_STUDENT_SOLUTIONS:
+		return ProcessGetAllStudentSolutionsMessage(msg_header, recv_buffer, connection_ptr, server, logs);
+		break;
+	case GET_SOLUTION_FROM_TEACHER:
+		return ProcessGetSolutionFromTeacherMesasge(msg_header, recv_buffer, connection_ptr, server, logs);
 		break;
 	default:	// заглушка дл€ неизвестных
 		std::string tmp_str{ "Ќеизвестный вторичный код сообщени€ от " };
@@ -2221,6 +2233,7 @@ bool ProcessGetAllSolutionsMessage(const MsgHead& msg_header, const std::vector<
 
 	// временные переменные
 	uint32_t uint32_t_buffer;
+	uint32_t account_task_id{ 0 };
 
 	// читаем сообщение
 	uint32_t index = msg_header.size_of();
@@ -2252,6 +2265,7 @@ bool ProcessGetAllSolutionsMessage(const MsgHead& msg_header, const std::vector<
 				break;
 			}
 
+			account_task_id++;
 			it++;	// увеличиваем иттератор
 		}
 
@@ -2318,7 +2332,7 @@ bool ProcessGetAllSolutionsMessage(const MsgHead& msg_header, const std::vector<
 
 	std::vector<char> data;
 
-	CreateGetAllSolutionsMessage(data, tmp_all_cheaks, uint32_t_buffer, tmp_id_cheack_ptr, msg_header.third_code, server);
+	CreateGetAllSolutionsMessage(data, tmp_all_cheaks, uint32_t_buffer, tmp_id_cheack_ptr, msg_header.third_code, account_task_id, server);
 
 	return SendTo(connection_ptr, data, logs);
 }
@@ -2696,6 +2710,113 @@ bool ProcessGetSolutionFromStudentMessage(const MsgHead& msg_header, const std::
 	std::vector<char> data;
 	
 	CreateGetSolutionFromStudentMessage(data, nedded_cheak);
+
+	return SendTo(connection_ptr, data, logs);
+}
+
+bool ProcessGetAllStudentSolutionsMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
+	// проверка роли
+	if (connection_ptr->account_ptr->role != TEACHER_ROLE) {
+		logs.insert(EL_ERROR, EL_ACTION, "¬ыход за предылы роли от : " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	// временные переменные
+	uint32_t task_id, account_task_id;
+	id_cheack* account_cheacks_ptr{ nullptr };
+
+	// чтение самого сообщени€
+	uint32_t index = msg_header.size_of();
+	try {
+		task_id = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		account_task_id = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+	}
+	catch (...) {
+		logs.insert(EL_ERROR, EL_NETWORK, "ќшибка чтени€ запроса на получение всех решений студента (от преподавател€) от : " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	// => прочитано успешно
+
+	if (task_id > server.all_tasks.size() - 1) {
+		logs.insert(EL_ERROR, EL_ACTION, "ќшибка (слишком большой task_id: " + std::to_string(task_id) + ") от : " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	if (account_task_id > server.all_tasks[task_id]->checked_accounts.size() - 1) {
+		logs.insert(EL_ERROR, EL_ACTION, "ќшибка (слишком большой account_task_id: " + std::to_string(account_task_id) + ") от : " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	account_cheacks_ptr = server.all_tasks[task_id]->checked_accounts[account_task_id];
+
+	std::vector<cheacks*> tmp_all_cheaks;	// все попытки по аккаунту 
+	{
+		std::lock_guard<std::mutex> lock(server.tasks_mutex);
+		
+		tmp_all_cheaks = server.all_tasks[task_id]->checked_accounts[account_task_id]->all_tryes;
+	}
+
+	std::vector<char> data;
+
+	CreateGetAllSolutionsMessage(data, tmp_all_cheaks, task_id, account_cheacks_ptr, 0, account_task_id, server);
+
+	return SendTo(connection_ptr, data, logs);
+}
+
+bool ProcessGetSolutionFromTeacherMesasge(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs) {
+	// проверка роли
+	if (connection_ptr->account_ptr->role != TEACHER_ROLE) {
+		logs.insert(EL_ERROR, EL_ACTION, "¬ыход за предылы роли от: " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	// переменные
+	uint32_t task_id, account_task_id, solution_id;
+	cheacks* nedded_cheack_ptr{ nullptr };
+
+	// читаем сообщение
+	uint32_t index = msg_header.size_of();
+	try {
+		task_id = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		account_task_id = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		solution_id = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+	}
+	catch (...) {
+		logs.insert(EL_ERROR, EL_NETWORK, "ќшибка чтени€ запроса на открытие cpp (от препода) от : " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	// провер€ем на правильность
+	if (task_id > server.all_tasks.size() - 1) {
+		logs.insert(EL_ERROR, EL_ACTION, "ќшибка (слишком большой task_id: " + std::to_string(task_id) + ") от : " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	if (account_task_id > server.all_tasks[task_id]->checked_accounts.size() - 1) {
+		logs.insert(EL_ERROR, EL_ACTION, "ќшибка (слишком большой account_task_id: " + std::to_string(account_task_id) + ") от : " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	if (solution_id > server.all_tasks[task_id]->checked_accounts[account_task_id]->all_tryes.size() - 1) {
+		logs.insert(EL_ERROR, EL_ACTION, "ќшибка (слишком большой solution_id: " + std::to_string(account_task_id) + ") от : " + std::string(inet_ntoa(connection_ptr->connection_addr.sin_addr)) + ((connection_ptr->account_ptr == nullptr) ? "" : std::string('(' + connection_ptr->account_ptr->last_name + ' ' + connection_ptr->account_ptr->first_name[0] + '.' + connection_ptr->account_ptr->surname[0] + ')')) + ", закрываю соединение");
+		return false;
+	}
+
+	nedded_cheack_ptr = server.all_tasks[task_id]->checked_accounts[account_task_id]->all_tryes[solution_id];
+
+	// собираем ответ
+	std::vector<char> data;
+
+	CreateGetSolutionFromStudentMessage(data, nedded_cheack_ptr);
 
 	return SendTo(connection_ptr, data, logs);
 }
