@@ -17,6 +17,7 @@
 #define SEND_SOLUTION 90
 #define OPEN_SOLUTION 95
 #define GET_ALL_STUDENTS_FROM_SOLUTION 105
+#define GET_SOLUTION_FROM_STUDENT 93
 
 // методы классов
 
@@ -391,7 +392,19 @@ void ClientClickLogic(int32_t pressed_but, Client_data& client_data) {
 			switch (pressed_but)
 			{
 			case 0:	// открыть файл
+				{
+					std::lock_guard<std::mutex> lock(client_data.menu_mutex);
 
+					client_data.menu_.set_notification(6, "(В процессе...)");
+
+					client_data.menu_.advanced_clear_console();
+					client_data.menu_.advanced_display_menu();
+				}
+				{
+					std::vector<char> data;
+					CreateGetSolutionFromStudent(data, (client_data.screen_info_.id / 1000000) - 1, ((client_data.screen_info_.id % 1000000) / 1000) - 1, ((client_data.screen_info_.id % 1000000) % 1000) - 1);
+					SendTo(client_data, data);
+				}
 				break;
 			case 1:	// назад
 				{
@@ -955,6 +968,9 @@ bool ProcessMessage(const MsgHead& msg_header, const std::vector<char>& recv_buf
 		break;
 	case GET_ALL_STUDENTS_FROM_SOLUTION:
 		return GetALLStudentsFromTask(msg_header, recv_buffer, client_data);
+		break;
+	case GET_SOLUTION_FROM_STUDENT:
+		return GetSolutionFromStudent(msg_header, recv_buffer, client_data);
 		break;
 	default:
 		return false;	// неизвестная команда
@@ -1618,6 +1634,44 @@ bool GetALLStudentsFromTask(const MsgHead& msg_header, const std::vector<char>& 
 	TeacherGetAllStudentsFromTaskMenu(client_data, task_id, task_name, all_students_tmp);
 
 	return true;
+}
+
+bool GetSolutionFromStudent(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+	std::string file_str;
+	
+
+	// читаем сообщение
+	uint32_t index = msg_header.size_of();
+	try {
+		uint32_t_buffer = *reinterpret_cast<const uint32_t*>(&recv_buffer[index]);
+		index += sizeof(uint32_t);
+
+		file_str.insert(file_str.end(), &recv_buffer[index], &recv_buffer[index] + uint32_t_buffer);
+		index += uint32_t_buffer;
+	}
+	catch (...) {
+		return false;
+	}
+
+	// записываем файл во временный
+	std::ofstream file("solution.cpp", std::ios::out | std::ios::trunc);
+	file << file_str;
+	file.close();
+
+	// очищаем "В процессе..." если все еще на том экране
+	if (client_data.screen_info_.role == STUDENT_ROLE && client_data.screen_info_.type == 4) {
+		std::lock_guard<std::mutex> lock(client_data.menu_mutex);
+
+		client_data.menu_.set_notification(6, "");
+
+		client_data.menu_.advanced_clear_console();
+		client_data.menu_.advanced_display_menu();
+	}
+
+	// открываем сообщение
+	OpenFileForUser(GetAppDirectory() + "\\solution.cpp");
 }
 
 void AuthorisationMenu(Client_data& client_data, std::string text) {
@@ -3181,6 +3235,49 @@ void CreateGetAllStudentFromTask(std::vector<char>& vect, const uint32_t task_id
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
 
 	uchar_buffer = GET_ALL_STUDENTS_FROM_SOLUTION;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uint32_t_buffer = 0;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = main_data.size();
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	vect.insert(vect.end(), main_data.begin(), main_data.end());
+}
+
+void CreateGetSolutionFromStudent(std::vector<char>& vect, const uint32_t task_id, const uint32_t solution_id, const uint32_t sort_id) {
+	// временные переменные
+	uint32_t uint32_t_buffer;
+	char* tmp_ptr;
+	unsigned char uchar_buffer;
+
+	std::vector<char> main_data;
+
+	// заполнение main_data
+	uint32_t_buffer = task_id;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = solution_id;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	uint32_t_buffer = sort_id;
+	tmp_ptr = reinterpret_cast<char*>(&uint32_t_buffer);
+	main_data.insert(main_data.end(), tmp_ptr, tmp_ptr + sizeof(uint32_t));
+
+	// оставление всего сообщения
+	vect.clear();
+
+	uchar_buffer = FROM_CLIENT;
+	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
+	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
+
+	uchar_buffer = GET_SOLUTION_FROM_STUDENT;
 	tmp_ptr = reinterpret_cast<char*>(&uchar_buffer);
 	vect.insert(vect.end(), tmp_ptr, tmp_ptr + sizeof(unsigned char));
 

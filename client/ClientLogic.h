@@ -120,6 +120,8 @@ bool GetSolution(const MsgHead& msg_header, const std::vector<char>& recv_buffer
 
 bool GetALLStudentsFromTask(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
 
+bool GetSolutionFromStudent(const MsgHead& msg_header, const std::vector<char>& recv_buffer, Client_data& client_data);
+
 // менюшки
 void AuthorisationMenu(Client_data& client_data, std::string text);
 bool AuthorisationMenuChangeIpLogic(Client_data& client_data);
@@ -169,6 +171,8 @@ void CreateSendSolutionMessage(std::vector<char>& vect, const std::string& cpp_f
 void CreateGetSolutionMessage(std::vector<char>& vect, const uint32_t task_id, const uint32_t solution_id, const uint32_t sort_id);
 
 void CreateGetAllStudentFromTask(std::vector<char>& vect, const uint32_t task_id);
+
+void CreateGetSolutionFromStudent(std::vector<char>& vect, const uint32_t task_id, const uint32_t solution_id, const uint32_t sort_id);
 
 // перефирия
 std::string WstrToStr(const std::wstring& wstr);

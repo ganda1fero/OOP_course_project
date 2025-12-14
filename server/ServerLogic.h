@@ -236,6 +236,8 @@ void CreateGetSolutionMessage(std::vector<char>& vect, const uint32_t& task_id, 
 
 void CreateGetAllSudentsFromTaskMessge(std::vector<char>& vect, const uint32_t& task_id, const task_note* task_ptr, ServerData& server);
 
+void CreateGetSolutionFromStudentMessage(std::vector<char>& vect, const cheacks* nedded_cheack_ptr);
+
 
 //------------------(Функции чтения message)
 bool ProcessAuthorisationMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
@@ -252,6 +254,7 @@ bool ProcessGetAllSolutionsMessage(const MsgHead& msg_header, const std::vector<
 bool ProcessSendSolutonMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessGetSolutionMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 bool ProcessGetAllStudentsFromTaskMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
+bool ProcessGetSolutionFromStudentMessage(const MsgHead& msg_header, const std::vector<char>& recv_buffer, serv_connection* connection_ptr, ServerData& server, EasyLogs& logs);
 
 
 //-----------------(Перифирия)
