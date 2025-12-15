@@ -1704,7 +1704,7 @@ bool GetSolutionFromStudent(const MsgHead& msg_header, const std::vector<char>& 
 	}
 
 	// записываем файл во временный
-	std::ofstream file("solution.cpp", std::ios::out | std::ios::trunc);
+	std::ofstream file(GetAppDirectory() + "\\solution.cpp", std::ios::out | std::ios::trunc);
 	
 	if (file.is_open() == false) {
 		return false;
@@ -1712,6 +1712,7 @@ bool GetSolutionFromStudent(const MsgHead& msg_header, const std::vector<char>& 
 
 	file << file_str;
 	file.close();
+	Sleep(1);	// пасхалко
 
 	// очищаем "В процессе..." если все еще на том экране
 	if (client_data.screen_info_.role == STUDENT_ROLE && client_data.screen_info_.type == 4) {
